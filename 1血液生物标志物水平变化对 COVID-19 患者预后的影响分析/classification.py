@@ -51,7 +51,7 @@ y_train = train_labels
 rf_model = RandomForestClassifier(n_estimators=100, random_state=42)
 
 # k折交叉验证
-kf = KFold(n_splits=5, shuffle=True, random_state=42)
+kf = KFold(n_splits=10, shuffle=True, random_state=42)
 accuracies = []
 f1_scores = []
 custom_scores = []
@@ -122,4 +122,4 @@ for i in range(len(custom_scores)):
 plt.tight_layout()
 plt.show()
 # 0.9923,0.0032
-#
+# 0.9934 0.0064
