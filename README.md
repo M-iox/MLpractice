@@ -1,6 +1,6 @@
 # MLpractice
 分支说明：  
-master：通常代表项目的生产环境版本。也就是说，main 分支上的代码始终是稳定的，并且可以随时部署到生产环境。因此，未经测试或审核的代码不应直接提交到 main 分支。  
+master：通常代表项目的生产环境版本。也就是说，master 分支上的代码始终是稳定的，并且可以随时部署到生产环境。因此，未经测试或审核的代码不应直接提交到 main 分支。  
   
 feature：测试分支，每次提交到feature分支时最好备注上做出的更改的内容。建议频繁提交避免做出更改后无法回溯。
 每当完成一个阶段性的工作时需要创建 Pull Request (PR)。遇到问题需要帮助也可以提交PR并且开会议交流。
@@ -52,8 +52,8 @@ feature：测试分支，每次提交到feature分支时最好备注上做出的
    - **同步主仓库的变更**：在等待PR被审查的过程中，主仓库的代码可能会发生变化。为了保持你Fork的仓库与主仓库同步，团队成员需要定期从上游仓库获取最新的更改，并将其合并到自己的本地分支：
      ```
      git fetch upstream
-     git checkout main
-     git merge upstream/main
+     git checkout master
+     git merge upstream/master
      ```
    - **解决冲突**：如果在合并过程中出现冲突，团队成员需要手动解决冲突，并在本地测试代码后，再次提交到远程仓库。
 
@@ -61,16 +61,16 @@ feature：测试分支，每次提交到feature分支时最好备注上做出的
    - **PR被合并后**：一旦PR被主仓库合并，团队成员需要更新自己Fork的仓库，以便进行新的任务。这时可以再次从上游仓库拉取最新代码并同步：
      ```
      git fetch upstream
-     git checkout main
-     git merge upstream/main
-     git push origin main
+     git checkout master
+     git merge upstream/master
+     git push origin master
      ```
 
 ### **工作流程图示**：
 1. **Fork仓库**：在GitHub上点击“Fork”按钮，将主仓库复制到自己的账户中。
 2. **克隆仓库**：使用`git clone`将Fork的仓库克隆到本地。
 3. **设置上游仓库**：添加主仓库为上游仓库，以便将来同步代码。
-4. **创建新分支**：从`main`分支创建一个新分支进行开发。
+4. **创建新分支**：从`master`分支创建一个新分支进行开发。
 5. **推送代码**：完成开发后，将新分支推送到自己的Fork仓库。
 6. **创建PR**：在GitHub上发起PR请求，将更改合并到主仓库。
 7. **同步上游变更**：定期从主仓库同步更新，保持与主分支一致。
