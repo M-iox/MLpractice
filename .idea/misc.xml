@@ -3,5 +3,5 @@
   <component name="Black">
     <option name="sdkName" value="deepke" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="pytorch" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.11 (Pytorch) (3)" project-jdk-type="Python SDK" />
 </project>
