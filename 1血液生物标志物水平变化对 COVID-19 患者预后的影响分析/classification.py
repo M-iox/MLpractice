@@ -6,6 +6,7 @@ from sklearn.impute import SimpleImputer
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from sklearn.model_selection import GridSearchCV
 
 # 读取数据
 train_data = pd.read_excel('训练集.xlsx', sheet_name=0)
@@ -48,7 +49,21 @@ scorer = make_scorer(custom_scorer)
 # 模型训练和交叉验证
 X_train = all_features
 y_train = train_labels
-rf_model = RandomForestClassifier(n_estimators=100, random_state=42)
+
+# 超参数调优（GridSearchCV）
+param_grid = {
+    'n_estimators': [100, 200, 300],
+    'max_depth': [None, 10, 20, 30],
+    'min_samples_split': [2, 5, 10],
+    'max_features': ['auto', 'sqrt', 'log2']
+}
+
+grid_search = GridSearchCV(estimator=RandomForestClassifier(random_state=42), param_grid=param_grid, cv=5, scoring='accuracy')
+grid_search.fit(X_train, y_train)
+# 输出最佳参数
+print("Best parameters found: ", grid_search.best_params_)
+# 使用最佳参数创建模型
+rf_model = RandomForestClassifier(**grid_search.best_params_, random_state=42)
 
 # k折交叉验证
 kf = KFold(n_splits=10, shuffle=True, random_state=42)
@@ -123,3 +138,4 @@ plt.tight_layout()
 plt.show()
 # 0.9923,0.0032
 # 0.9934 0.0064
+# Best parameters found:  {'max_depth': 10, 'max_features': 'sqrt', 'min_samples_split': 5, 'n_estimators': 100}
