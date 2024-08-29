@@ -133,6 +133,6 @@ class RandomForestRegressionModel:
         plt.show()
 
 # 使用方法
-model = RandomForestRegressionModel(data_path='./训练集.xlsx')
-model.tune_hyperparameters()
-model.cross_validate()
+# model = RandomForestRegressionModel(data_path='./训练集.xlsx')
+# model.tune_hyperparameters()
+# model.cross_validate()
