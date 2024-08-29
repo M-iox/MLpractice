@@ -8,19 +8,19 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 class RandomForestRegressionModel:
-    def __init__(self, data_path, sheet_name=1):
+    def __init__(self, data_path, sheet_name=0):
         self.data_path = data_path
         self.sheet_name = sheet_name
-        self.train_data = pd.read_excel(self.data_path, sheet_name=0)
+        self.train_data = pd.read_excel(self.data_path, sheet_name=self.sheet_name)
         self.train_data.columns = self.train_data.columns.str.strip()
-        self.features = self.train_data.iloc[:, 2:]
+        self.features = self.train_data.iloc[:, 1:-2]  # 选择第二列到倒数第三列的所有列
+        self.features = pd.concat([self.features, self.train_data.iloc[:, -1]], axis=1)
+        self.empty = ['D1 blood routine upon admission', 'D7 blood routine', 'Liver enzyme D1', 'Coagulation index D1', 'Inflammatory indicator D1', 'Blood gas analysis', 'Virus nucleic acid test CT value']
+        self.features = self.features.drop(self.empty, axis = 1)
+        self.train_data['Death (1 Yes 2 No)'] = self.train_data['Death (1 Yes 2 No)'].astype(str)
         self.label_encoder = LabelEncoder()
+        self.target = self.label_encoder.fit_transform(self.train_data['Death (1 Yes 2 No)'].values.ravel())
 
-        #self.target = self.label_encoder.transform(self.train_data['outcome'].values.ravel())
-        self.label_encoder.fit(self.train_data['outcome'])
-
-        # 然后使用transform方法转换数据
-        self.target = self.label_encoder.transform(self.train_data['outcome'].values.ravel())
         self.process_data()
 
     def process_data(self):
@@ -28,9 +28,9 @@ class RandomForestRegressionModel:
         numeric_features = self.features.dtypes[self.features.dtypes != 'object'].index
         numeric_imputer = SimpleImputer(strategy='median')
         self.features[numeric_features] = numeric_imputer.fit_transform(self.features[numeric_features])
-
         categorical_features = self.features.columns.difference(numeric_features)
         categorical_imputer = SimpleImputer(strategy='most_frequent')
+        self.features[categorical_features] = self.features[categorical_features].astype('str')
         self.features[categorical_features] = categorical_imputer.fit_transform(self.features[categorical_features])
 
         # One-Hot编码处理离散值
@@ -47,14 +47,22 @@ class RandomForestRegressionModel:
             'n_estimators': [100, 200, 300],
             'max_depth': [None, 10, 20, 30],
             'min_samples_split': [2, 5, 10],
-            'max_features': [ 'sqrt', 'log2']
+            'max_features': ['1.0', 'sqrt', 'log2']
         }
 
         grid_search = GridSearchCV(estimator=RandomForestRegressor(random_state=42), param_grid=param_grid, cv=5, scoring='neg_mean_absolute_error')
         grid_search.fit(self.features, self.target)
         print("Best parameters found: ", grid_search.best_params_)
         self.rf_model = RandomForestRegressor(**grid_search.best_params_, random_state=42)
-        # self.rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
+
+    def default_parameters(self):
+        self.rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
+
+    def predict_full_dataset(self,test_features):
+        X_test = test_features[:]
+        # 对整个数据集进行预测
+        predictions = self.rf_model.predict(X_test)
+        return predictions
 
     def cross_validate(self):
         kf = KFold(n_splits=10, shuffle=True, random_state=42)
@@ -123,26 +131,8 @@ class RandomForestRegressionModel:
 
         plt.tight_layout()
         plt.show()
-    def default_parameters(self):
-        self.rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
 
-    def predict_full_dataset(self,test_features):
-        X_test = test_features[:]
-        # 对整个数据集进行预测
-        predictions = self.rf_model.predict(X_test)
-        return predictions
 # 使用方法
-model = RandomForestRegressionModel(data_path='训练集.xlsx')
+model = RandomForestRegressionModel(data_path='./训练集.xlsx')
 model.tune_hyperparameters()
 model.cross_validate()
-
-# Best parameters found:  {'max_depth': None, 'max_features': 'sqrt', 'min_samples_split': 2, 'n_estimators': 100}
-# MAE scores: [0.4080952380952381, 0.43476190476190474, 0.3657142857142857, 0.4347619047619049, 0.3976190476190477, 0.38333333333333336, 0.38809523809523805, 0.4004761904761905, 0.3665, 0.4255]
-# Mean MAE: 0.4005
-# Standard deviation: 0.0242
-# RMSE scores: [0.430984476573831, 0.4849987727034054, 0.4235001546072692, 0.46995947140355065, 0.4391387675244092, 0.44913143690800317, 0.41488380473160363, 0.44400235949609007, 0.39089001010514446, 0.45426313960082654]
-# Mean RMSE: 0.4402
-# Standard deviation: 0.0257
-# Custom scores (0.5*MAE + 0.5*RMSE): [0.4195398573345346, 0.4598803387326551, 0.3946072201607774, 0.4523606880827278, 0.41837890757172846, 0.4162323851206683, 0.40148952141342087, 0.4222392749861403, 0.37869500505257225, 0.43988156980041326]
-# Mean custom score: 0.4203
-# Standard deviation: 0.0240
