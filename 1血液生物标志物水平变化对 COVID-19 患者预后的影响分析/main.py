@@ -2,7 +2,7 @@ from classification import RandomForestModel
 from regression import RandomForestRegressionModel
 import pandas as pd
 from sklearn.impute import SimpleImputer
-
+import numpy as np
 def process_test_data(test_data_path, sheet_name=0):
     # 读取测试集数据
     test_data = pd.read_excel(test_data_path, sheet_name=sheet_name)
@@ -25,6 +25,13 @@ def process_test_data(test_data_path, sheet_name=0):
 
     return test_features
 
+# 设置显示所有行和列
+pd.set_option('display.max_rows', None)
+pd.set_option('display.max_columns', None)
+
+# 设置不折叠长列表或数组
+np.set_printoptions(threshold=np.inf)
+
 # 使用函数处理测试集
 test_features = process_test_data('训练集.xlsx')
 
@@ -33,6 +40,7 @@ ClassficationModel.default_parameters()
 ClassficationModel.cross_validate()
 predictions, patient_index = ClassficationModel.predict_full_dataset(test_features)
 
+print("患者预测结果",predictions)
 if len(patient_index) > 0:
     # 提取分类为1的样本的特征
     high_risk_features = test_features.iloc[patient_index]
@@ -43,8 +51,6 @@ if len(patient_index) > 0:
     RegressionModel.cross_validate()
     mortality_predictions = RegressionModel.predict_full_dataset(high_risk_features)
 
-    print("High Risk Patients Mortality Predictions: ", mortality_predictions)
+    print("高风险病人的下标和死亡率: ",patient_index, mortality_predictions)
 else:
-    print("No high risk patients found.")
-
-#
+    print("没有找到高风险病人.")
