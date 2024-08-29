@@ -51,6 +51,9 @@ class RandomForestModel:
         print("Best parameters found: ", grid_search.best_params_)
         self.rf_model = RandomForestClassifier(**grid_search.best_params_, random_state=42)
 
+    def default_parameters(self):
+        self.rf_model = RandomForestClassifier(n_estimators=100, random_state=42)
+
     def cross_validate(self):
         kf = KFold(n_splits=10, shuffle=True, random_state=42)
         accuracies, f1_scores, custom_scores = [], [], []
@@ -72,6 +75,7 @@ class RandomForestModel:
 
         self._print_results(accuracies, f1_scores, custom_scores)
         self._plot_results(accuracies, f1_scores, custom_scores)
+
 
     def _print_results(self, accuracies, f1_scores, custom_scores):
         print(f'Accuracy scores: {accuracies}')
@@ -123,9 +127,9 @@ class RandomForestModel:
         plt.show()
 
 # 使用方法
-model = RandomForestModel(data_path='训练集.xlsx')
-model.tune_hyperparameters()
-model.cross_validate()
+# model = RandomForestModel(data_path='训练集.xlsx')
+# model.tune_hyperparameters()
+# model.cross_validate()
 
 # Best parameters found:  {'max_depth': 10, 'max_features': 'sqrt', 'min_samples_split': 5, 'n_estimators': 100}
 # Accuracy scores: [0.994535519125683, 1.0, 0.9890710382513661, 1.0, 0.9835164835164835, 1.0, 0.989010989010989, 1.0, 0.9835164835164835, 1.0]
