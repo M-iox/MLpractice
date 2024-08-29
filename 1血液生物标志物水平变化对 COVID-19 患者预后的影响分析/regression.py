@@ -54,6 +54,12 @@ class RandomForestRegressionModel:
     def default_parameters(self):
         self.rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
 
+    def predict_full_dataset(self,test_features):
+        X_test = test_features[:]
+        # 对整个数据集进行预测
+        predictions = self.rf_model.predict(X_test)
+        return predictions
+
     def cross_validate(self):
         kf = KFold(n_splits=10, shuffle=True, random_state=42)
         maes, rmses, custom_scores = [], [], []
