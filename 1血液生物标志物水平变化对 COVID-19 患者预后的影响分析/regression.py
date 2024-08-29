@@ -50,7 +50,9 @@ class RandomForestRegressionModel:
         grid_search.fit(self.features, self.target)
         print("Best parameters found: ", grid_search.best_params_)
         self.rf_model = RandomForestRegressor(**grid_search.best_params_, random_state=42)
-        # self.rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
+
+        def default_parameters(self):
+            self.rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
 
     def cross_validate(self):
         kf = KFold(n_splits=10, shuffle=True, random_state=42)
@@ -121,9 +123,9 @@ class RandomForestRegressionModel:
         plt.show()
 
 # 使用方法
-model = RandomForestRegressionModel(data_path='训练集.xlsx')
-model.tune_hyperparameters()
-model.cross_validate()
+# model = RandomForestRegressionModel(data_path='训练集.xlsx')
+# model.tune_hyperparameters()
+# model.cross_validate()
 
 # Best parameters found:  {'max_depth': 10, 'max_features': 'sqrt', 'min_samples_split': 10, 'n_estimators': 100}
 # MAE scores: [0.09462750324665432, 0.06879966661235526, 0.09363642762159227, 0.10910517265156121, 0.14589944500352425, 0.110869926781796, 0.09075867240249126, 0.08111292952762168, 0.07797869412897176, 0.1031381158043449]
