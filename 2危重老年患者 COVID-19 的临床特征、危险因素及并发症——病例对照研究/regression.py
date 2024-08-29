@@ -123,7 +123,14 @@ class RandomForestRegressionModel:
 
         plt.tight_layout()
         plt.show()
+    def default_parameters(self):
+        self.rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
 
+    def predict_full_dataset(self,test_features):
+        X_test = test_features[:]
+        # 对整个数据集进行预测
+        predictions = self.rf_model.predict(X_test)
+        return predictions
 # 使用方法
 model = RandomForestRegressionModel(data_path='训练集.xlsx')
 model.tune_hyperparameters()
