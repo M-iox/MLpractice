@@ -51,8 +51,8 @@ class RandomForestRegressionModel:
         print("Best parameters found: ", grid_search.best_params_)
         self.rf_model = RandomForestRegressor(**grid_search.best_params_, random_state=42)
 
-        def default_parameters(self):
-            self.rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
+    def default_parameters(self):
+        self.rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
 
     def cross_validate(self):
         kf = KFold(n_splits=10, shuffle=True, random_state=42)

@@ -53,6 +53,12 @@ class RandomForestModel:
 
     def default_parameters(self):
         self.rf_model = RandomForestClassifier(n_estimators=100, random_state=42)
+    def predict_full_dataset(self,test_features):
+        X_test = test_features[:]
+        # 对整个数据集进行预测
+        predictions = self.rf_model.predict(X_test)
+
+        return predictions
 
     def cross_validate(self):
         kf = KFold(n_splits=10, shuffle=True, random_state=42)
@@ -75,7 +81,6 @@ class RandomForestModel:
 
         self._print_results(accuracies, f1_scores, custom_scores)
         self._plot_results(accuracies, f1_scores, custom_scores)
-
 
     def _print_results(self, accuracies, f1_scores, custom_scores):
         print(f'Accuracy scores: {accuracies}')
