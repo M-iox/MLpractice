@@ -79,8 +79,8 @@ class RandomForestRegressionModel:
             rmses.append(rmse)
             custom_scores.append(custom)
 
-        # self._print_results(maes, rmses, custom_scores)
-        # self._plot_results(maes, rmses, custom_scores)
+        self._print_results(maes, rmses, custom_scores)
+        self._plot_results(maes, rmses, custom_scores)
 
     def _print_results(self, maes, rmses, custom_scores):
         print(f'MAE scores: {maes}')

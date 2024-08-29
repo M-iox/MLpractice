@@ -79,8 +79,8 @@ class RandomForestModel:
             f1_scores.append(f1)
             custom_scores.append(custom)
 
-        # self._print_results(accuracies, f1_scores, custom_scores)
-        # self._plot_results(accuracies, f1_scores, custom_scores)
+        self._print_results(accuracies, f1_scores, custom_scores)
+        self._plot_results(accuracies, f1_scores, custom_scores)
 
     def _print_results(self, accuracies, f1_scores, custom_scores):
         print(f'Accuracy scores: {accuracies}')
