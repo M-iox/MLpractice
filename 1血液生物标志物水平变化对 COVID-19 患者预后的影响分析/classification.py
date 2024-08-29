@@ -57,8 +57,8 @@ class RandomForestModel:
         X_test = test_features[:]
         # 对整个数据集进行预测
         predictions = self.rf_model.predict(X_test)
-
-        return predictions
+        patient_index = np.where(predictions == 1)[0]
+        return predictions , patient_index
 
     def cross_validate(self):
         kf = KFold(n_splits=10, shuffle=True, random_state=42)

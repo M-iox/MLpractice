@@ -31,7 +31,19 @@ test_features = process_test_data('训练集.xlsx')
 ClassficationModel = RandomForestModel(data_path='训练集.xlsx')
 ClassficationModel.default_parameters()
 ClassficationModel.cross_validate()
+predictions, patient_index = ClassficationModel.predict_full_dataset(test_features)
 
-print(f"ClassficationModel.predict_full_dataset():{ClassficationModel.predict_full_dataset(test_features)}")
+if len(patient_index) > 0:
+    # 提取分类为1的样本的特征
+    high_risk_features = test_features.iloc[patient_index]
 
+    # 使用回归模型预测死亡率
+    RegressionModel = RandomForestRegressionModel(data_path='训练集.xlsx')
+    RegressionModel.default_parameters()
+    RegressionModel.cross_validate()
+    mortality_predictions = RegressionModel.predict_full_dataset(high_risk_features)
+
+    print("High Risk Patients Mortality Predictions: ", mortality_predictions)
+else:
+    print("No high risk patients found.")
 
