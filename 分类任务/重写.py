@@ -8,7 +8,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from imblearn.over_sampling import SMOTE
 from collections import Counter
-
+from sklearn.svm import SVC
 class Model:
     def __init__(self):
         self.train_data = pd.read_csv('train.csv')
@@ -20,7 +20,7 @@ class Model:
         print(self.test_features)
         print(self.labels)
 
-        self.default_para()
+        self.tuned_para()
         self.train_test(self.train_features,'train')
         self.train_test(self.test_features, 'test')
 
@@ -82,14 +82,23 @@ class Model:
         return data
 
     def default_para(self):
-        self.rf_model = RandomForestClassifier(
-            max_depth=10,
-            max_features='sqrt',
-            min_samples_split=5,
-            n_estimators=100,
+        self._model = SVC(
+            kernel='rbf',             # 使用 RBF 核函数（径向基核函数）
+            C=1.0,                    # 正则化参数
+            gamma='scale',            # 核函数的系数
             random_state=42
         )
 
+    def tuned_para(self):
+        param_grid = {
+            'C': [0.1, 1, 10, 100],
+            'gamma': ['scale', 'auto', 0.1, 1],
+            'kernel': ['linear', 'rbf', 'poly']
+        }
+        grid_search = GridSearchCV(estimator=SVC(random_state=42), param_grid=param_grid, cv=5, scoring='accuracy')
+        grid_search.fit(self.train_features, self.labels)
+        print("Best parameters found: ", grid_search.best_params_)
+        self._model = SVC (**grid_search.best_params_)
     def train_test(self, data, mode):
         if mode == 'train':
             kf = KFold(n_splits=10, shuffle=True, random_state=42)
@@ -106,8 +115,8 @@ class Model:
                 # 输出SMOTE后的样本分布
                 print(f"Fold {kf.get_n_splits()}: Resampled class distribution: {Counter(y_train_fold)}")
 
-                self.rf_model.fit(X_train_fold, y_train_fold)
-                y_pred_fold = self.rf_model.predict(X_valid_fold)
+                self._model.fit(X_train_fold, y_train_fold)
+                y_pred_fold = self._model.predict(X_valid_fold)
                 acc = accuracy_score(y_valid_fold, y_pred_fold)
                 f1 = f1_score(y_valid_fold, y_pred_fold, average='weighted')
                 custom = self.custom_scorer(y_valid_fold, y_pred_fold)
@@ -120,7 +129,7 @@ class Model:
             self._plot_results(accuracies, f1_scores, custom_scores)
 
         if mode == 'test':
-            predictions = self.rf_model.predict(data)
+            predictions = self._model.predict(data)
             results = pd.DataFrame({'id': self.test_data.iloc[:, 0], 'Group': predictions})
             output_csv = 'result.csv'
             results.to_csv(output_csv, index=False)
