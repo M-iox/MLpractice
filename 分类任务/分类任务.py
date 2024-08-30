@@ -128,13 +128,13 @@ class RandomForestModel:
     def predict_test_set(self, test_data_path, output_csv):
         test_data = pd.read_csv(test_data_path)
         test_data.columns = test_data.columns.str.strip()
-        test_features = test_data.iloc[:, 1:-1]
-        test_features.drop(columns=['IL-6'], inplace=True)
+        self.test_features = test_data.iloc[:, 1:-1]
+        self.test_features.drop(columns=['IL-6'], inplace=True)
 
-        test_features = self.process_data(test_features)
-        predictions = self.rf_model.predict(test_features)
+        self.test_features = self.process_data(self.test_features)
+        predictions = self.rf_model.predict(self.test_features)
 
-        probabilities = self.rf_model.predict_proba(test_features)
+        probabilities = self.rf_model.predict_proba(self.test_features)
         print(probabilities)
 
         predictions = (probabilities[:, 1] > 0.5).astype(int)
@@ -147,3 +147,6 @@ model = RandomForestModel(data_path='train.csv')
 model.default_parameters()
 model.cross_validate()
 model.predict_test_set(test_data_path='test.csv', output_csv='预测结果.csv')
+print(model.features)
+print(model.test_features)
+print(model.labels)
