@@ -13,6 +13,7 @@ class RandomForestModel:
         self.train_data = pd.read_csv(self.data_path)
         self.train_data.columns = self.train_data.columns.str.strip()
         self.features = self.train_data.iloc[:, 2:-1]
+        self.features.drop(columns=['IL-6'], inplace=True)
         self.label_encoder = LabelEncoder()
         self.label_encoder.classes_ = np.array(['Control', 'COVID-19'])
         self.labels = self.label_encoder.transform(self.train_data['Group'].values.ravel())
@@ -20,6 +21,8 @@ class RandomForestModel:
 
     def process_data(self):
         # 填充数值型和分类特征的NA值
+
+
         numeric_features = self.features.dtypes[self.features.dtypes != 'object'].index
         numeric_imputer = SimpleImputer(strategy='median')
         self.features[numeric_features] = numeric_imputer.fit_transform(self.features[numeric_features])
@@ -51,7 +54,12 @@ class RandomForestModel:
         self.rf_model = RandomForestClassifier(**grid_search.best_params_, random_state=42)
 
     def default_parameters(self):
-        self.rf_model = RandomForestClassifier(n_estimators=100, random_state=42)
+        self.rf_model = RandomForestClassifier(
+            max_depth=10,
+            max_features='sqrt',
+            min_samples_split=5,
+            n_estimators=100
+        )
 
 
     def cross_validate(self):
@@ -129,8 +137,9 @@ class RandomForestModel:
         # 加载测试集数据
         test_data = pd.read_csv(test_data_path)
         test_data.columns = test_data.columns.str.strip()
-        test_features = test_data.iloc[:, 2:-1]  # 假设第一个列是ID
+        test_features = test_data.iloc[:, 1:-1]  # 假设第一个列是ID
 
+        test_features.drop(columns=['IL-6'], inplace=True)
         # 预处理测试集数据
         numeric_features = test_features.dtypes[test_features.dtypes != 'object'].index
         numeric_imputer = SimpleImputer(strategy='median')
@@ -143,6 +152,7 @@ class RandomForestModel:
         test_features = pd.get_dummies(test_features, dummy_na=True, dtype=int)
         # 对测试集进行预测
         predictions = self.rf_model.predict(test_features)
+
 
         # 生成结果并保存为CSV文件
         results = pd.DataFrame({'id': test_data.iloc[:, 0], 'Group': predictions})
