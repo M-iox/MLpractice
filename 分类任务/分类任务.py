@@ -8,10 +8,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 class RandomForestModel:
-    def __init__(self, data_path, sheet_name=0):
+    def __init__(self, data_path):
         self.data_path = data_path
-        self.sheet_name = sheet_name
-        self.train_data = pd.read_excel(self.data_path, sheet_name=self.sheet_name)
+        self.train_data = pd.read_csv(self.data_path)
         self.train_data.columns = self.train_data.columns.str.strip()
         self.features = self.train_data.iloc[:, 2:-1]
         self.label_encoder = LabelEncoder()
@@ -53,12 +52,7 @@ class RandomForestModel:
 
     def default_parameters(self):
         self.rf_model = RandomForestClassifier(n_estimators=100, random_state=42)
-    def predict_full_dataset(self,test_features):
-        X_test = test_features[:]
-        # 对整个数据集进行预测
-        predictions = self.rf_model.predict(X_test)
-        patient_index = np.where(predictions == 1)[0]
-        return predictions , patient_index
+
 
     def cross_validate(self):
         kf = KFold(n_splits=10, shuffle=True, random_state=42)
@@ -79,8 +73,8 @@ class RandomForestModel:
             f1_scores.append(f1)
             custom_scores.append(custom)
 
-        # self._print_results(accuracies, f1_scores, custom_scores)
-        # self._plot_results(accuracies, f1_scores, custom_scores)
+            self._print_results(accuracies, f1_scores, custom_scores)
+            self._plot_results(accuracies, f1_scores, custom_scores)
 
     def _print_results(self, accuracies, f1_scores, custom_scores):
         print(f'Accuracy scores: {accuracies}')
@@ -131,18 +125,31 @@ class RandomForestModel:
         plt.tight_layout()
         plt.show()
 
-# 使用方法
-# model = RandomForestModel(data_path='训练集1.xlsx')
-# model.tune_hyperparameters()
-# model.cross_validate()
+    def predict_test_set(self, test_data_path, output_csv):
+        # 加载测试集数据
+        test_data = pd.read_csv(test_data_path)
+        test_data.columns = test_data.columns.str.strip()
+        test_features = test_data.iloc[:, 2:-1]  # 假设第一个列是ID
 
-# Best parameters found:  {'max_depth': 10, 'max_features': 'sqrt', 'min_samples_split': 5, 'n_estimators': 100}
-# Accuracy scores: [0.994535519125683, 1.0, 0.9890710382513661, 1.0, 0.9835164835164835, 1.0, 0.989010989010989, 1.0, 0.9835164835164835, 1.0]
-# Mean accuracy: 0.9940
-# Standard deviation: 0.0067
-# F1 scores: [0.994510453805217, 1.0, 0.989181298972451, 1.0, 0.9835791175117018, 1.0, 0.9888865109453344, 1.0, 0.983826804424811, 1.0]
-# Mean F1 score: 0.9940
-# Standard deviation: 0.0066
-# Custom scores (0.5*Acc + 0.5*F1): [0.99452298646545, 1.0, 0.9891261686119086, 1.0, 0.9835478005140926, 1.0, 0.9889487499781617, 1.0, 0.9836716439706472, 1.0]
-# Mean custom score: 0.9940
-# Standard deviation: 0.0067
+        # 预处理测试集数据
+        numeric_features = test_features.dtypes[test_features.dtypes != 'object'].index
+        numeric_imputer = SimpleImputer(strategy='median')
+        test_features[numeric_features] = numeric_imputer.fit_transform(test_features[numeric_features])
+
+        categorical_features = test_features.columns.difference(numeric_features)
+        categorical_imputer = SimpleImputer(strategy='most_frequent')
+        test_features[categorical_features] = categorical_imputer.fit_transform(test_features[categorical_features])
+
+        test_features = pd.get_dummies(test_features, dummy_na=True, dtype=int)
+        # 对测试集进行预测
+        predictions = self.rf_model.predict(test_features)
+
+        # 生成结果并保存为CSV文件
+        results = pd.DataFrame({'id': test_data.iloc[:, 0], 'Group': predictions})
+        results.to_csv(output_csv, index=False)
+
+# 使用方法
+model = RandomForestModel(data_path='train.csv')
+model.default_parameters()
+model.cross_validate()
+model.predict_test_set(test_data_path='test.csv', output_csv='预测结果.csv')

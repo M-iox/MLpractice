@@ -33,9 +33,9 @@ pd.set_option('display.max_columns', None)
 np.set_printoptions(threshold=np.inf)
 
 # 使用函数处理测试集
-test_features = process_test_data('训练集.xlsx')
+test_features = process_test_data('../dataset/训练集1.xlsx')
 
-ClassficationModel = RandomForestModel(data_path='训练集.xlsx')
+ClassficationModel = RandomForestModel(data_path='../dataset/训练集1.xlsx')
 ClassficationModel.default_parameters()
 ClassficationModel.cross_validate()
 predictions, patient_index = ClassficationModel.predict_full_dataset(test_features)
@@ -46,7 +46,7 @@ if len(patient_index) > 0:
     high_risk_features = test_features.iloc[patient_index]
 
     # 使用回归模型预测死亡率
-    RegressionModel = RandomForestRegressionModel(data_path='训练集.xlsx')
+    RegressionModel = RandomForestRegressionModel(data_path='../dataset/训练集1.xlsx')
     RegressionModel.default_parameters()
     RegressionModel.cross_validate()
     mortality_predictions = RegressionModel.predict_full_dataset(high_risk_features)
