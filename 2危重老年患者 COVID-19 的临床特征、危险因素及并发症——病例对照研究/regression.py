@@ -132,9 +132,9 @@ class RandomForestRegressionModel:
         predictions = self.rf_model.predict(X_test)
         return predictions
 # 使用方法
-# model = RandomForestRegressionModel(data_path='训练集.xlsx')
-# model.tune_hyperparameters()
-# model.cross_validate()
+model = RandomForestRegressionModel(data_path='../dataset/训练集2.xlsx')
+model.tune_hyperparameters()
+model.cross_validate()
 
 # Best parameters found:  {'max_depth': None, 'max_features': 'sqrt', 'min_samples_split': 2, 'n_estimators': 100}
 # MAE scores: [0.4080952380952381, 0.43476190476190474, 0.3657142857142857, 0.4347619047619049, 0.3976190476190477, 0.38333333333333336, 0.38809523809523805, 0.4004761904761905, 0.3665, 0.4255]
