@@ -6,6 +6,10 @@ from sklearn.impute import SimpleImputer
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from imblearn.over_sampling import SMOTE
+from imblearn.over_sampling import ADASYN  # 替换SMOTE为ADASYN
+from collections import Counter
+from sklearn.preprocessing import MinMaxScaler
 
 class RandomForestModel:
     def __init__(self, data_path):
@@ -30,6 +34,13 @@ class RandomForestModel:
 
         # One-Hot编码处理离散值
         X = pd.get_dummies(X, dummy_na=True, dtype=int)
+
+        # 对数值型特征进行标准化
+        numeric_features = X.dtypes[X.dtypes != 'object'].index  # 重新获取标准化后的数值特征
+        scaler = MinMaxScaler()
+        X.loc[:, numeric_features] = scaler.fit_transform(X.loc[:, numeric_features])
+
+
         return X
 
     def custom_scorer(self, y_true, y_pred):
@@ -56,13 +67,14 @@ class RandomForestModel:
             max_features='sqrt',
             min_samples_split=5,
             n_estimators=100,
-            class_weight='balanced',
             random_state=42
         )
 
     def cross_validate(self):
         kf = KFold(n_splits=10, shuffle=True, random_state=42)
         accuracies, f1_scores, custom_scores = [], [], []
+
+        smote = ADASYN(random_state=42)
 
         for train_index, test_index in kf.split(self.features):
             X_train_fold, X_test_fold = self.features.iloc[train_index], self.features.iloc[test_index]
@@ -72,6 +84,12 @@ class RandomForestModel:
             X_train_fold = self.process_data(X_train_fold)
             X_test_fold = self.process_data(X_test_fold)
             X_test_fold = X_test_fold.reindex(columns=X_train_fold.columns, fill_value=0)
+
+            # 应用SMOTE来平衡训练数据
+            X_train_fold, y_train_fold = smote.fit_resample(X_train_fold, y_train_fold)
+
+            # 输出SMOTE后的样本分布
+            print(f"Fold {kf.get_n_splits()}: Resampled class distribution: {Counter(y_train_fold)}")
 
             self.rf_model.fit(X_train_fold, y_train_fold)
             y_pred_fold = self.rf_model.predict(X_test_fold)
@@ -88,14 +106,6 @@ class RandomForestModel:
         self._plot_results(accuracies, f1_scores, custom_scores)
 
     def _print_results(self, accuracies, f1_scores, custom_scores):
-        print(f'Accuracy scores: {accuracies}')
-        print(f'Mean accuracy: {np.mean(accuracies):.4f}')
-        print(f'Standard deviation: {np.std(accuracies):.4f}')
-
-        print(f'F1 scores: {f1_scores}')
-        print(f'Mean F1 score: {np.mean(f1_scores):.4f}')
-        print(f'Standard deviation: {np.std(f1_scores):.4f}')
-
         print(f'Custom scores (0.5*Acc + 0.5*F1): {custom_scores}')
         print(f'Mean custom score: {np.mean(custom_scores):.4f}')
         print(f'Standard deviation: {np.std(custom_scores):.4f}')
@@ -103,28 +113,7 @@ class RandomForestModel:
     def _plot_results(self, accuracies, f1_scores, custom_scores):
         plt.figure(figsize=(15, 6))
 
-        # 准确率
-        plt.subplot(1, 3, 1)
-        plt.bar(range(1, len(accuracies) + 1), accuracies, color='blue', alpha=0.7)
-        plt.xlabel('Fold Number')
-        plt.ylabel('Accuracy')
-        plt.title('Cross-Validation Accuracy for Each Fold')
-        plt.ylim(0.8, 1.0)
-        for i in range(len(accuracies)):
-            plt.text(i + 1, accuracies[i], f'{accuracies[i]:.4f}', ha='center', va='bottom')
-
-        # F1分数
-        plt.subplot(1, 3, 2)
-        plt.bar(range(1, len(f1_scores) + 1), f1_scores, color='green', alpha=0.7)
-        plt.xlabel('Fold Number')
-        plt.ylabel('F1 Score')
-        plt.title('Cross-Validation F1 Score for Each Fold')
-        plt.ylim(0.8, 1.0)
-        for i in range(len(f1_scores)):
-            plt.text(i + 1, f1_scores[i], f'{f1_scores[i]:.4f}', ha='center', va='bottom')
-
         # 自定义评分
-        plt.subplot(1, 3, 3)
         plt.bar(range(1, len(custom_scores) + 1), custom_scores, color='purple', alpha=0.7)
         plt.xlabel('Fold Number')
         plt.ylabel('Custom Score')
