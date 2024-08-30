@@ -1,4 +1,3 @@
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split, KFold, GridSearchCV
 from sklearn.metrics import accuracy_score, f1_score
 from sklearn.preprocessing import LabelEncoder
@@ -9,6 +8,14 @@ import matplotlib.pyplot as plt
 from imblearn.over_sampling import SMOTE
 from collections import Counter
 from sklearn.svm import SVC
+from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import Normalizer
+from sklearn.decomposition import PCA
+from sklearn.ensemble import VotingClassifier, RandomForestClassifier, GradientBoostingClassifier,StackingClassifier
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import ExtraTreesClassifier
+
 class Model:
     def __init__(self):
         self.train_data = pd.read_csv('train.csv')
@@ -20,7 +27,7 @@ class Model:
         print(self.test_features)
         print(self.labels)
 
-        self.tuned_para()
+        self.default_para()
         self.train_test(self.train_features,'train')
         self.train_test(self.test_features, 'test')
 
@@ -48,6 +55,7 @@ class Model:
         acc = accuracy_score(y_true, y_pred)
         f1 = f1_score(y_true, y_pred, average='weighted')
         return 0.5 * acc + 0.5 * f1
+
 
     def process_data(self, data, mode):
         data.columns = data.columns.str.strip()  # 去掉列名的空格
@@ -79,26 +87,53 @@ class Model:
 
         # One-Hot编码处理离散值
         data = pd.get_dummies(data, dummy_na=True, dtype=int)
+
+        #标准化或正则化
+        scaler = StandardScaler()
+        data=scaler.fit_transform(data)
+
+        #使用PCA降维
+        pca = PCA(n_components=0.95)  # 保留95%的方差
+        data = pca.fit_transform(data)
+        # Mean custom score: 0.9596
+        # Standard deviation: 0.0249
+
+        # 将 numpy 数组转换回 DataFrame
+        data = pd.DataFrame(data)
+
         return data
 
-    def default_para(self):
-        self._model = SVC(
-            kernel='rbf',             # 使用 RBF 核函数（径向基核函数）
-            C=1.0,                    # 正则化参数
-            gamma='scale',            # 核函数的系数
-            random_state=42
-        )
+    def ensemble_model(self):
+        self.svc = SVC(kernel='rbf', C=1, gamma='scale', probability=True, random_state=42)
+        self.rf = RandomForestClassifier(n_estimators=100, max_depth=10, min_samples_split=5, random_state=42)
+        self.gb = GradientBoostingClassifier(n_estimators=100, learning_rate=0.05, max_depth=5, random_state=42)
+        self.lr = LogisticRegression(penalty='l2', C=0.5, random_state=42, max_iter=1000)
+        self.et = ExtraTreesClassifier(n_estimators=100, random_state=42)
 
-    def tuned_para(self):
-        param_grid = {
-            'C': [0.1, 1, 10, 100],
-            'gamma': ['scale', 'auto', 0.1, 1],
-            'kernel': ['linear', 'rbf', 'poly']
-        }
-        grid_search = GridSearchCV(estimator=SVC(random_state=42), param_grid=param_grid, cv=5, scoring='accuracy')
-        grid_search.fit(self.train_features, self.labels)
-        print("Best parameters found: ", grid_search.best_params_)
-        self._model = SVC (**grid_search.best_params_)
+    def default_para(self):
+        self.ensemble_model()
+        self._model = StackingClassifier(
+            estimators=[
+                ('svc', self.svc),
+                ('rf', self.rf),
+            ],
+            final_estimator=self.lr,  # 使用逻辑回归作为元学习器
+            cv=5,  # 使用5折交叉验证
+            n_jobs=-1,  # 使用所有CPU核进行并行计算
+            passthrough=True  # 将原始特征传递给元学习器
+        )
+        # self._model = self.rf
+
+    # def tuned_para(self):
+    #     param_grid = {
+    #         'C': [0.1, 1, 10, 100],
+    #         'gamma': ['scale', 'auto', 0.1, 1],
+    #         'kernel': ['linear', 'rbf', 'poly']
+    #     }
+    #     grid_search = GridSearchCV(estimator=SVC(random_state=42), param_grid=param_grid, cv=5, scoring='accuracy')
+    #     grid_search.fit(self.train_features, self.labels)
+    #     print("Best parameters found: ", grid_search.best_params_)
+    #     self._model = SVC (**grid_search.best_params_)
     def train_test(self, data, mode):
         if mode == 'train':
             kf = KFold(n_splits=10, shuffle=True, random_state=42)
