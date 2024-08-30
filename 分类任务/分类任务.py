@@ -1,6 +1,6 @@
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import cross_val_score, KFold, GridSearchCV
-from sklearn.metrics import accuracy_score, f1_score, make_scorer
+from sklearn.model_selection import KFold, GridSearchCV
+from sklearn.metrics import accuracy_score, f1_score
 from sklearn.preprocessing import LabelEncoder
 from sklearn.impute import SimpleImputer
 import numpy as np
@@ -15,24 +15,22 @@ class RandomForestModel:
         self.features = self.train_data.iloc[:, 2:-1]
         self.features.drop(columns=['IL-6'], inplace=True)
         self.label_encoder = LabelEncoder()
-        self.label_encoder.classes_ = np.array(['Control', 'COVID-19'])
+        self.label_encoder.classes_ = np.array(['Control','COVID-19'])
         self.labels = self.label_encoder.transform(self.train_data['Group'].values.ravel())
-        self.process_data()
 
-    def process_data(self):
-        # 填充数值型和分类特征的NA值
+    def process_data(self, X):
+        numeric_features = X.dtypes[X.dtypes != 'object'].index
+        categorical_features = X.columns.difference(numeric_features)
 
-
-        numeric_features = self.features.dtypes[self.features.dtypes != 'object'].index
         numeric_imputer = SimpleImputer(strategy='median')
-        self.features[numeric_features] = numeric_imputer.fit_transform(self.features[numeric_features])
-
-        categorical_features = self.features.columns.difference(numeric_features)
         categorical_imputer = SimpleImputer(strategy='most_frequent')
-        self.features[categorical_features] = categorical_imputer.fit_transform(self.features[categorical_features])
+
+        X.loc[:, numeric_features] = numeric_imputer.fit_transform(X.loc[:, numeric_features])
+        X.loc[:, categorical_features] = categorical_imputer.fit_transform(X.loc[:, categorical_features])
 
         # One-Hot编码处理离散值
-        self.features = pd.get_dummies(self.features, dummy_na=True, dtype=int)
+        X = pd.get_dummies(X, dummy_na=True, dtype=int)
+        return X
 
     def custom_scorer(self, y_true, y_pred):
         acc = accuracy_score(y_true, y_pred)
@@ -40,7 +38,6 @@ class RandomForestModel:
         return 0.5 * acc + 0.5 * f1
 
     def tune_hyperparameters(self):
-        # 超参数调优
         param_grid = {
             'n_estimators': [100, 200, 300],
             'max_depth': [None, 10, 20, 30],
@@ -58,9 +55,10 @@ class RandomForestModel:
             max_depth=10,
             max_features='sqrt',
             min_samples_split=5,
-            n_estimators=100
+            n_estimators=100,
+            class_weight='balanced',
+            random_state=42
         )
-
 
     def cross_validate(self):
         kf = KFold(n_splits=10, shuffle=True, random_state=42)
@@ -69,6 +67,11 @@ class RandomForestModel:
         for train_index, test_index in kf.split(self.features):
             X_train_fold, X_test_fold = self.features.iloc[train_index], self.features.iloc[test_index]
             y_train_fold, y_test_fold = self.labels[train_index], self.labels[test_index]
+
+            # 在训练集上进行特征处理
+            X_train_fold = self.process_data(X_train_fold)
+            X_test_fold = self.process_data(X_test_fold)
+            X_test_fold = X_test_fold.reindex(columns=X_train_fold.columns, fill_value=0)
 
             self.rf_model.fit(X_train_fold, y_train_fold)
             y_pred_fold = self.rf_model.predict(X_test_fold)
@@ -81,8 +84,8 @@ class RandomForestModel:
             f1_scores.append(f1)
             custom_scores.append(custom)
 
-            self._print_results(accuracies, f1_scores, custom_scores)
-            self._plot_results(accuracies, f1_scores, custom_scores)
+        self._print_results(accuracies, f1_scores, custom_scores)
+        self._plot_results(accuracies, f1_scores, custom_scores)
 
     def _print_results(self, accuracies, f1_scores, custom_scores):
         print(f'Accuracy scores: {accuracies}')
@@ -134,27 +137,19 @@ class RandomForestModel:
         plt.show()
 
     def predict_test_set(self, test_data_path, output_csv):
-        # 加载测试集数据
         test_data = pd.read_csv(test_data_path)
         test_data.columns = test_data.columns.str.strip()
-        test_features = test_data.iloc[:, 1:-1]  # 假设第一个列是ID
-
+        test_features = test_data.iloc[:, 1:-1]
         test_features.drop(columns=['IL-6'], inplace=True)
-        # 预处理测试集数据
-        numeric_features = test_features.dtypes[test_features.dtypes != 'object'].index
-        numeric_imputer = SimpleImputer(strategy='median')
-        test_features[numeric_features] = numeric_imputer.fit_transform(test_features[numeric_features])
 
-        categorical_features = test_features.columns.difference(numeric_features)
-        categorical_imputer = SimpleImputer(strategy='most_frequent')
-        test_features[categorical_features] = categorical_imputer.fit_transform(test_features[categorical_features])
-
-        test_features = pd.get_dummies(test_features, dummy_na=True, dtype=int)
-        # 对测试集进行预测
+        test_features = self.process_data(test_features)
         predictions = self.rf_model.predict(test_features)
 
+        probabilities = self.rf_model.predict_proba(test_features)
+        print(probabilities)
 
-        # 生成结果并保存为CSV文件
+        predictions = (probabilities[:, 1] > 0.5).astype(int)
+
         results = pd.DataFrame({'id': test_data.iloc[:, 0], 'Group': predictions})
         results.to_csv(output_csv, index=False)
 
