@@ -79,9 +79,6 @@ class Model:
 
         # One-Hot编码处理离散值
         data = pd.get_dummies(data, dummy_na=True, dtype=int)
-
-
-
         return data
 
     def default_para(self):
@@ -97,17 +94,17 @@ class Model:
         if mode == 'train':
             kf = KFold(n_splits=10, shuffle=True, random_state=42)
             accuracies, f1_scores, custom_scores = [], [], []
-            # smote = SMOTE(random_state=42)
+            smote = SMOTE(random_state=42)
 
-            for train_index, valid_index in kf.split(self.train_features):
-                X_train_fold, X_valid_fold = self.train_features.iloc[train_index], self.train_features.iloc[valid_index]
+            for train_index, valid_index in kf.split(data):
+                X_train_fold, X_valid_fold = data.iloc[train_index], data.iloc[valid_index]
                 y_train_fold, y_valid_fold = self.labels[train_index], self.labels[valid_index]
 
-                # # 应用SMOTE来平衡训练数据
-                # X_train_fold, y_train_fold = smote.fit_resample(X_train_fold, y_train_fold)
-                #
-                # # 输出SMOTE后的样本分布
-                # print(f"Fold {kf.get_n_splits()}: Resampled class distribution: {Counter(y_train_fold)}")
+                # 应用SMOTE来平衡训练数据
+                X_train_fold, y_train_fold = smote.fit_resample(X_train_fold, y_train_fold)
+
+                # 输出SMOTE后的样本分布
+                print(f"Fold {kf.get_n_splits()}: Resampled class distribution: {Counter(y_train_fold)}")
 
                 self.rf_model.fit(X_train_fold, y_train_fold)
                 y_pred_fold = self.rf_model.predict(X_valid_fold)
@@ -123,8 +120,8 @@ class Model:
             self._plot_results(accuracies, f1_scores, custom_scores)
 
         if mode == 'test':
-            predictions = self.rf_model.predict(self.test_features)
-            results = pd.DataFrame({'id': self.test_features.iloc[:, 0], 'Group': predictions})
+            predictions = self.rf_model.predict(data)
+            results = pd.DataFrame({'id': self.test_data.iloc[:, 0], 'Group': predictions})
             output_csv = 'result.csv'
             results.to_csv(output_csv, index=False)
 
