@@ -7,6 +7,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from imblearn.over_sampling import SMOTE
+from collections import Counter
+
 class Model:
     def __init__(self):
         self.train_data = pd.read_csv('train.csv')
@@ -14,9 +16,42 @@ class Model:
         self.train_features = self.process_data(self.train_data, mode='train')
         self.test_features  = self.process_data(self.test_data, mode='test')
 
+        print(self.train_features)
+        print(self.test_features)
+        print(self.labels)
+
+        self.default_para()
+        self.train_test(self.train_features,'train')
+        self.train_test(self.test_features, 'test')
+
+    def _print_results(self, accuracies, f1_scores, custom_scores):
+        print(f'Custom scores (0.5*Acc + 0.5*F1): {custom_scores}')
+        print(f'Mean custom score: {np.mean(custom_scores):.4f}')
+        print(f'Standard deviation: {np.std(custom_scores):.4f}')
+
+    def _plot_results(self, accuracies, f1_scores, custom_scores):
+        plt.figure(figsize=(15, 6))
+
+        # 自定义评分
+        plt.bar(range(1, len(custom_scores) + 1), custom_scores, color='purple', alpha=0.7)
+        plt.xlabel('Fold Number')
+        plt.ylabel('Custom Score')
+        plt.title('Cross-Validation Custom Score for Each Fold')
+        plt.ylim(0.8, 1.0)
+        for i in range(len(custom_scores)):
+            plt.text(i + 1, custom_scores[i], f'{custom_scores[i]:.4f}', ha='center', va='bottom')
+
+        plt.tight_layout()
+        plt.show()
+
+    def custom_scorer(self, y_true, y_pred):
+        acc = accuracy_score(y_true, y_pred)
+        f1 = f1_score(y_true, y_pred, average='weighted')
+        return 0.5 * acc + 0.5 * f1
+
     def process_data(self, data, mode):
         data.columns = data.columns.str.strip()  # 去掉列名的空格
-        data = data.drop(columns=['IL-6'])
+        data = data.drop(columns=['IL-6'], errors='ignore')  # 删除特定列，忽略不存在的列
         # 处理数据
         if mode == 'train':
             # 训练数据处理逻辑
@@ -44,10 +79,54 @@ class Model:
 
         # One-Hot编码处理离散值
         data = pd.get_dummies(data, dummy_na=True, dtype=int)
+
+
+
         return data
+
+    def default_para(self):
+        self.rf_model = RandomForestClassifier(
+            max_depth=10,
+            max_features='sqrt',
+            min_samples_split=5,
+            n_estimators=100,
+            random_state=42
+        )
+
+    def train_test(self, data, mode):
+        if mode == 'train':
+            kf = KFold(n_splits=10, shuffle=True, random_state=42)
+            accuracies, f1_scores, custom_scores = [], [], []
+            # smote = SMOTE(random_state=42)
+
+            for train_index, valid_index in kf.split(self.train_features):
+                X_train_fold, X_valid_fold = self.train_features.iloc[train_index], self.train_features.iloc[valid_index]
+                y_train_fold, y_valid_fold = self.labels[train_index], self.labels[valid_index]
+
+                # # 应用SMOTE来平衡训练数据
+                # X_train_fold, y_train_fold = smote.fit_resample(X_train_fold, y_train_fold)
+                #
+                # # 输出SMOTE后的样本分布
+                # print(f"Fold {kf.get_n_splits()}: Resampled class distribution: {Counter(y_train_fold)}")
+
+                self.rf_model.fit(X_train_fold, y_train_fold)
+                y_pred_fold = self.rf_model.predict(X_valid_fold)
+                acc = accuracy_score(y_valid_fold, y_pred_fold)
+                f1 = f1_score(y_valid_fold, y_pred_fold, average='weighted')
+                custom = self.custom_scorer(y_valid_fold, y_pred_fold)
+
+                accuracies.append(acc)
+                f1_scores.append(f1)
+                custom_scores.append(custom)
+
+            self._print_results(accuracies, f1_scores, custom_scores)
+            self._plot_results(accuracies, f1_scores, custom_scores)
+
+        if mode == 'test':
+            predictions = self.rf_model.predict(self.test_features)
+            results = pd.DataFrame({'id': self.test_features.iloc[:, 0], 'Group': predictions})
+            output_csv = 'result.csv'
+            results.to_csv(output_csv, index=False)
 
 model = Model()
 
-print(model.train_features)
-print(model.test_features)
-print(model.labels)
