@@ -97,6 +97,20 @@ class Model:
             self.train_features[i] = self.standardize_and_reduce(self.train_features[i], fit=True)
             self.test_features[i] = self.standardize_and_reduce(self.test_features[i], fit=False)
 
+    def handle_outliers(data, z_thresh=3):
+        # 确保 data 是 DataFrame
+        if not isinstance(data, pd.DataFrame):
+            raise ValueError("数据需要是一个 DataFrame 类型")
+
+        # 只处理数值型特征
+        numeric_features = data.select_dtypes(include=[np.number]).columns
+        for col in numeric_features:
+            mean = data[col].mean()
+            std = data[col].std()
+            z_scores = (data[col] - mean) / std
+            # 保留正常数据（绝对z分数在阈值范围内）和缺失值
+            data = data[(np.abs(z_scores) <= z_thresh) | data[col].isna()]
+        return data
     def standardize_and_reduce(self, data, fit=True):
         if fit:
             # 拟合标准化器和PCA，并转换数据
@@ -219,7 +233,7 @@ class Model:
 
             # 将当前任务的结果存储在DataFrame中
             task_results = pd.DataFrame({
-                'id': self.test_data[i].iloc[:, 0],  # 假设id是第一列
+                'id': self.test_data[i].iloc[:, 0],  # id是第一列
                 'label': predictions  # 使用'label'表示死亡率
             })
 
