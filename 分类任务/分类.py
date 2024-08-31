@@ -69,11 +69,11 @@ class Model:
             self.labels = label_encoder.fit_transform(self.labels)
             self.labels = np.where(self.labels == 0, 1, 0)
 
-            data = data.iloc[:, 2:-1]
+            data = data.iloc[:, 2:]
 
         elif mode == 'test':
             # 测试数据处理逻辑
-            data = data.iloc[:, 1:-1]
+            data = data.iloc[:, 1:]
 
         # 处理缺失值
         numeric_features = data.dtypes[data.dtypes != 'object'].index
@@ -103,8 +103,11 @@ class Model:
 
         return data
 
+
     def ensemble_model(self):
-        self.svc = SVC(kernel='rbf', C=1, gamma='scale', probability=True, random_state=42)
+        self.svc1 = SVC(kernel='rbf', C=1, gamma='scale', probability=True, random_state=42)  # 使用RBF核函数
+        self.svc2 = SVC(kernel='linear', C=0.1, probability=True, random_state=42)  # 使用线性核函数
+        self.svc3 = SVC(kernel='poly', degree=3, C=0.5, gamma='scale', probability=True, random_state=42)  # 使用多项式核函数
         self.rf = RandomForestClassifier(n_estimators=100, max_depth=10, min_samples_split=5, random_state=42)
         self.gb = GradientBoostingClassifier(n_estimators=100, learning_rate=0.05, max_depth=5, random_state=42)
         self.lr = LogisticRegression(penalty='l2', C=0.5, random_state=42, max_iter=1000)
@@ -112,28 +115,34 @@ class Model:
 
     def default_para(self):
         self.ensemble_model()
-        self._model = StackingClassifier(
-            estimators=[
-                ('svc', self.svc),
-                ('rf', self.rf),
-            ],
-            final_estimator=self.lr,  # 使用逻辑回归作为元学习器
-            cv=5,  # 使用5折交叉验证
-            n_jobs=-1,  # 使用所有CPU核进行并行计算
-            passthrough=True  # 将原始特征传递给元学习器
-        )
-        # self._model = self.rf
+        # self._model = StackingClassifier(
+        #     estimators=[
+        #         ('svc1', self.svc1),
+        #         # ('rf', self.rf),
+        #         ('svc2', self.svc2),
+        #         ('svc3', self.svc3),
+        #         ('gb', self.gb)
+        #     ],
+        #     final_estimator=GradientBoostingClassifier(n_estimators=50, learning_rate=0.1, max_depth=3, random_state=42),
+        #     cv=5,  # 使用5折交叉验证
+        #     n_jobs=-1,  # 使用所有CPU核进行并行计算
+        #     passthrough=False # 将原始特征传递给元学习器
+        # )
+        self._model = self.svc1
 
-    # def tuned_para(self):
-    #     param_grid = {
-    #         'C': [0.1, 1, 10, 100],
-    #         'gamma': ['scale', 'auto', 0.1, 1],
-    #         'kernel': ['linear', 'rbf', 'poly']
-    #     }
-    #     grid_search = GridSearchCV(estimator=SVC(random_state=42), param_grid=param_grid, cv=5, scoring='accuracy')
-    #     grid_search.fit(self.train_features, self.labels)
-    #     print("Best parameters found: ", grid_search.best_params_)
-    #     self._model = SVC (**grid_search.best_params_)
+    def tuned_para(self):
+        param_grid = {
+            'n_estimators': [100, 150, 200, 500, 700, 900],
+            'max_features': ['auto', 'sqrt', 'log2'],
+            'max_depth': [4, 6, 8, 12, 14, 16],
+            'criterion': ['gini', 'entropy'],
+            'n_jobs': [-1, 1, None]
+        }
+        grid_search = GridSearchCV(estimator=RandomForestClassifier(), param_grid=param_grid, cv= 5)
+        grid_search.fit(self.train_features,self.labels)
+        print("Best parameters found: ", grid_search.best_params_)
+        self._model = RandomForestClassifier(** grid_search.best_params_)
+
     def train_test(self, data, mode):
         if mode == 'train':
             kf = KFold(n_splits=10, shuffle=True, random_state=42)
