@@ -1,6 +1,5 @@
 from sklearn.model_selection import train_test_split, KFold, GridSearchCV
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-from sklearn.preprocessing import LabelEncoder
 from sklearn.impute import SimpleImputer
 import numpy as np
 import pandas as pd
@@ -9,8 +8,6 @@ from sklearn.svm import SVR
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.ensemble import VotingRegressor, RandomForestRegressor, GradientBoostingRegressor, StackingRegressor
-from sklearn.neighbors import KNeighborsRegressor
-from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import ExtraTreesRegressor
 
 class Model:
@@ -33,14 +30,9 @@ class Model:
 
         self.train_features = {i: self.train_data[i].copy() for i in range(1, 4)}
         self.test_features = {i: self.test_data[i].copy() for i in range(1, 4)}
-
         self.labels = {1: 'label1', 2: 'label2', 3: 'label3'}
 
         self.process_data()
-
-        for i in range(1, 4):
-            print(f"self.train_data[i].shape:{self.train_data[i].shape}")
-            print(f"self.test_data[i].shape:{self.test_data[i].shape}")
 
         self.default_para()
         self.train_and_predict()
@@ -89,27 +81,39 @@ class Model:
         self.test_features[2] = self.test_features[2].iloc[:, 1:]
         self.test_features[3] = self.test_features[3].iloc[:, 1:]
 
-        # 处理缺失值和独热编码
+        # 处理缺失值、异常值和独热编码
         for i in range(1, 4):
             self.train_features[i] = self.handle_missing_and_encode(self.train_features[i], fit=True)
             self.test_features[i] = self.handle_missing_and_encode(self.test_features[i], fit=False)
+            # 新增：处理异常值
+            self.train_features[i] = self.handle_outliers(self.train_features[i])
+            self.test_features[i] = self.handle_outliers(self.test_features[i])
             # 标准化和PCA降维
-            self.train_features[i] = self.standardize_and_reduce(self.train_features[i], fit=True)
-            self.test_features[i] = self.standardize_and_reduce(self.test_features[i], fit=False)
+            # self.train_features[i] = self.standardize_and_reduce(self.train_features[i], fit=True)
+            # self.test_features[i] = self.standardize_and_reduce(self.test_features[i], fit=False)
 
-    def handle_outliers(data, z_thresh=3):
-        # 确保 data 是 DataFrame
-        if not isinstance(data, pd.DataFrame):
-            raise ValueError("数据需要是一个 DataFrame 类型")
-
+    def handle_outliers(self, data, threshold=1.5):
+        """
+        使用IQR（四分位距）方法来处理数据中的异常值
+        :param data: DataFrame, 需要处理的特征数据
+        :param threshold: float, 用于判断异常值的IQR倍数阈值，通常为1.5
+        :return: DataFrame, 处理后的数据
+        """
         # 只处理数值型特征
-        numeric_features = data.select_dtypes(include=[np.number]).columns
-        for col in numeric_features:
-            mean = data[col].mean()
-            std = data[col].std()
-            z_scores = (data[col] - mean) / std
-            # 保留正常数据（绝对z分数在阈值范围内）和缺失值
-            data = data[(np.abs(z_scores) <= z_thresh) | data[col].isna()]
+        numeric_features = data.select_dtypes(include=[np.number])
+
+        for column in numeric_features.columns:
+            Q1 = data[column].quantile(0.25)
+            Q3 = data[column].quantile(0.75)
+            IQR = Q3 - Q1
+
+            lower_bound = Q1 - threshold * IQR
+            upper_bound = Q3 + threshold * IQR
+
+            # 将异常值截断为边界值
+            data[column] = np.where(data[column] < lower_bound, lower_bound, data[column])
+            data[column] = np.where(data[column] > upper_bound, upper_bound, data[column])
+
         return data
     def standardize_and_reduce(self, data, fit=True):
         if fit:
@@ -157,26 +161,25 @@ class Model:
     def ensemble_model(self):
         # 使用回归模型替代分类模型
         self.svr = SVR(kernel='rbf', C=1, gamma='scale')
-        self.rf = RandomForestRegressor(n_estimators=100, max_depth=10, min_samples_split=5, random_state=42)
-        self.gb = GradientBoostingRegressor(n_estimators=100, learning_rate=0.05, max_depth=5, random_state=42)
-        self.lr = LinearRegression()
-        self.et = ExtraTreesRegressor(n_estimators=100, random_state=42)
+        self.rf = RandomForestRegressor(n_estimators=200, max_depth=10, min_samples_split=5, random_state=42)
+        self.gb = GradientBoostingRegressor(n_estimators=200, learning_rate=0.05, max_depth=5, random_state=42)
+        self.et = ExtraTreesRegressor(n_estimators=200, random_state=42)
 
     def default_para(self):
         self.ensemble_model()
-        # # 修改为StackingRegressor或其他适合回归的集成方法
-        # self._model = StackingRegressor(
-        #     estimators=[
-        #         ('svr', self.svr),
-        #         ('rf', self.rf),
-        #         ('gb', self.gb)
-        #     ],
-        #     final_estimator=GradientBoostingRegressor(n_estimators=50, learning_rate=0.1, max_depth=3, random_state=42),
-        #     cv=5,
-        #     n_jobs=-1,
-        #     passthrough=False
-        # )
-        self._model = self.svr
+        # 修改为StackingRegressor或其他适合回归的集成方法
+        self._model = StackingRegressor(
+            estimators=[
+                ('rf', self.rf),
+                ('gb', self.gb),
+                ('et', self.et)
+            ],
+            final_estimator=GradientBoostingRegressor(n_estimators=50, learning_rate=0.1, max_depth=3, random_state=42),
+            cv=5,
+            n_jobs=-1,
+            passthrough=False
+        )
+        # self._model = self.rf
     def tuned_para(self):
         param_grid = {
             'n_estimators': [100, 150, 200, 500, 700, 900],
@@ -200,7 +203,7 @@ class Model:
             X_test = self.test_features[i]
 
             # 进行交叉验证训练模型
-            kf = KFold(n_splits=10, shuffle=True, random_state=42)
+            kf = KFold(n_splits=20, shuffle=True, random_state=42)
             mse_scores, mae_scores, r2_scores = [], [], []
 
             for train_index, valid_index in kf.split(X_train):
