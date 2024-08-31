@@ -9,12 +9,12 @@ from imblearn.over_sampling import SMOTE
 from collections import Counter
 from sklearn.svm import SVC
 from sklearn.preprocessing import StandardScaler
-from sklearn.preprocessing import Normalizer
 from sklearn.decomposition import PCA
-from sklearn.ensemble import VotingClassifier, RandomForestClassifier, GradientBoostingClassifier,StackingClassifier
+from sklearn.ensemble import VotingClassifier, RandomForestClassifier, GradientBoostingClassifier, StackingClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import ExtraTreesClassifier
+from sklearn.metrics import mean_absolute_error, mean_squared_error, make_scorer
 
 class Model:
     def __init__(self):
@@ -102,6 +102,9 @@ class Model:
     def process_data(self):
         # 初始化独热编码所需的列
         self.encoder_columns = None
+        # 初始化标准化和PCA对象
+        self.scaler = StandardScaler()
+        self.pca = PCA(n_components=0.95)  # 保留95%的方差
 
         for i in range(1,4):
             # 去掉列名的空格
@@ -136,25 +139,20 @@ class Model:
         for i in range(1, 4):
             self.train_features[i] = self.handle_missing_and_encode(self.train_features[i], fit=True)
             self.test_features[i] = self.handle_missing_and_encode(self.test_features[i], fit=False)
+            # 标准化和PCA降维
+            self.train_features[i] = self.standardize_and_reduce(self.train_features[i], fit=True)
+            self.test_features[i] = self.standardize_and_reduce(self.test_features[i], fit=False)
+    def standardize_and_reduce(self, data, fit=True):
+        if fit:
+            # 拟合标准化器和PCA，并转换数据
+            data = self.scaler.fit_transform(data)
+            data = self.pca.fit_transform(data)
+        else:
+            # 使用已拟合的标准化器和PCA转换数据
+            data = self.scaler.transform(data)
+            data = self.pca.transform(data)
+        return pd.DataFrame(data)
 
-
-
-
-
-        # #标准化或正则化
-        # scaler = StandardScaler()
-        # data=scaler.fit_transform(data)
-        #
-        # #使用PCA降维
-        # pca = PCA(n_components=0.95)  # 保留95%的方差
-        # data = pca.fit_transform(data)
-        # # Mean custom score: 0.9596
-        # # Standard deviation: 0.0249
-        #
-        # # 将 numpy 数组转换回 DataFrame
-        # data = pd.DataFrame(data)
-        #
-        # return data
     def handle_missing_and_encode(self, data , fit=False):
         # 处理缺失值
         numeric_features = data.dtypes[data.dtypes != 'object'].index
@@ -261,4 +259,26 @@ class Model:
             output_csv = 'result.csv'
             results.to_csv(output_csv, index=False)
 
+    def _print_results(self, maes, rmses, custom_scores):
+        print(f'Custom scores (0.5*MAE + 0.5*RMSE): {custom_scores}')
+        print(f'Mean custom score: {np.mean(custom_scores):.4f}')
+        print(f'Standard deviation: {np.std(custom_scores):.4f}')
+
+    def _plot_results(self, maes, rmses, custom_scores):
+        plt.figure(figsize=(15, 6))
+        # 自定义评分
+        plt.bar(range(1, len(custom_scores) + 1), custom_scores, color='purple', alpha=0.7)
+        plt.xlabel('Fold Number')
+        plt.ylabel('Custom Score')
+        plt.title('Cross-Validation Custom Score for Each Fold')
+        for i in range(len(custom_scores)):
+            plt.text(i + 1, custom_scores[i], f'{custom_scores[i]:.4f}', ha='center', va='bottom')
+
+        plt.tight_layout()
+        plt.show()
+
+        def custom_scorer(self, y_true, y_pred):
+            mae = mean_absolute_error(y_true, y_pred)
+            rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+            return 0.5 * mae + 0.5 * rmse
 model = Model()
