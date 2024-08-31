@@ -31,8 +31,9 @@ class Model:
         self.train_data[2] = pd.read_excel('train2.xlsx', sheet_name='Sheet1')
         self.train_data[3] = pd.read_excel('train3.xlsx', sheet_name='Sheet1')
 
-        self.train_features=self.train_data
-        self.test_features=self.test_data
+        self.train_features = {i: self.train_data[i].copy() for i in range(1, 4)}
+        self.test_features = {i: self.test_data[i].copy() for i in range(1, 4)}
+
         self.labels = {1: 'label1', 2: 'label2', 3: 'label3'}
 
         self.process_data()
