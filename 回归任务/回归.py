@@ -161,9 +161,9 @@ class Model:
     def ensemble_model(self):
         # 使用回归模型替代分类模型
         self.svr = SVR(kernel='rbf', C=1, gamma='scale')
-        self.rf = RandomForestRegressor(n_estimators=200, max_depth=10, min_samples_split=5, random_state=42)
-        self.gb = GradientBoostingRegressor(n_estimators=200, learning_rate=0.05, max_depth=5, random_state=42)
-        self.et = ExtraTreesRegressor(n_estimators=200, random_state=42)
+        self.rf = RandomForestRegressor(n_estimators=100, max_depth=10, min_samples_split=5, random_state=42)
+        self.gb = GradientBoostingRegressor(n_estimators=100, learning_rate=0.05, max_depth=5, random_state=42)
+        self.et = ExtraTreesRegressor(n_estimators=100, random_state=42)
 
     def default_para(self):
         self.ensemble_model()
@@ -175,7 +175,7 @@ class Model:
                 ('et', self.et)
             ],
             final_estimator=GradientBoostingRegressor(n_estimators=50, learning_rate=0.1, max_depth=3, random_state=42),
-            cv=5,
+            cv=10,
             n_jobs=-1,
             passthrough=False
         )
