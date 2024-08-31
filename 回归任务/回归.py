@@ -1,20 +1,17 @@
 from sklearn.model_selection import train_test_split, KFold, GridSearchCV
-from sklearn.metrics import accuracy_score, f1_score
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from sklearn.preprocessing import LabelEncoder
 from sklearn.impute import SimpleImputer
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from imblearn.over_sampling import SMOTE
-from collections import Counter
-from sklearn.svm import SVC
+from sklearn.svm import SVR
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
-from sklearn.ensemble import VotingClassifier, RandomForestClassifier, GradientBoostingClassifier, StackingClassifier
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import ExtraTreesClassifier
-from sklearn.metrics import mean_absolute_error, mean_squared_error, make_scorer
+from sklearn.ensemble import VotingRegressor, RandomForestRegressor, GradientBoostingRegressor, StackingRegressor
+from sklearn.neighbors import KNeighborsRegressor
+from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import ExtraTreesRegressor
 
 class Model:
     def __init__(self):
@@ -63,31 +60,6 @@ class Model:
             # self.tuned_para()
             # self.train_test(self.train_features,'train')
             # self.train_test(self.test_features, 'test')
-
-    # def _print_results(self, accuracies, f1_scores, custom_scores):
-    #     print(f'Custom scores (0.5*Acc + 0.5*F1): {custom_scores}')
-    #     print(f'Mean custom score: {np.mean(custom_scores):.4f}')
-    #     print(f'Standard deviation: {np.std(custom_scores):.4f}')
-    #
-    # def _plot_results(self, accuracies, f1_scores, custom_scores):
-    #     plt.figure(figsize=(15, 6))
-    #
-    #     # 自定义评分
-    #     plt.bar(range(1, len(custom_scores) + 1), custom_scores, color='purple', alpha=0.7)
-    #     plt.xlabel('Fold Number')
-    #     plt.ylabel('Custom Score')
-    #     plt.title('Cross-Validation Custom Score for Each Fold')
-    #     plt.ylim(0.8, 1.0)
-    #     for i in range(len(custom_scores)):
-    #         plt.text(i + 1, custom_scores[i], f'{custom_scores[i]:.4f}', ha='center', va='bottom')
-    #
-    #     plt.tight_layout()
-    #     plt.show()
-    #
-    # def custom_scorer(self, y_true, y_pred):
-    #     acc = accuracy_score(y_true, y_pred)
-    #     f1 = f1_score(y_true, y_pred, average='weighted')
-    #     return 0.5 * acc + 0.5 * f1
     def process_label(self):
         self.labels[1] = self.train_data[1]['Deceased'] #No存活 ，Yes死亡
         self.labels[2] = self.train_data[2]['outcome'] #1表示存活, 2表示死亡
@@ -142,6 +114,7 @@ class Model:
             # 标准化和PCA降维
             self.train_features[i] = self.standardize_and_reduce(self.train_features[i], fit=True)
             self.test_features[i] = self.standardize_and_reduce(self.test_features[i], fit=False)
+
     def standardize_and_reduce(self, data, fit=True):
         if fit:
             # 拟合标准化器和PCA，并转换数据
@@ -186,78 +159,87 @@ class Model:
         return data
 
     def ensemble_model(self):
-        self.svc1 = SVC(kernel='rbf', C=1, gamma='scale', probability=True, random_state=42)  # 使用RBF核函数
-        self.svc2 = SVC(kernel='linear', C=0.1, probability=True, random_state=42)  # 使用线性核函数
-        self.svc3 = SVC(kernel='poly', degree=3, C=0.5, gamma='scale', probability=True, random_state=42)  # 使用多项式核函数
-        self.rf = RandomForestClassifier(n_estimators=100, max_depth=10, min_samples_split=5, random_state=42)
-        self.gb = GradientBoostingClassifier(n_estimators=100, learning_rate=0.05, max_depth=5, random_state=42)
-        self.lr = LogisticRegression(penalty='l2', C=0.5, random_state=42, max_iter=1000)
-        self.et = ExtraTreesClassifier(n_estimators=100, random_state=42)
+        # 使用回归模型替代分类模型
+        self.svr = SVR(kernel='rbf', C=1, gamma='scale')
+        self.rf = RandomForestRegressor(n_estimators=100, max_depth=10, min_samples_split=5, random_state=42)
+        self.gb = GradientBoostingRegressor(n_estimators=100, learning_rate=0.05, max_depth=5, random_state=42)
+        self.lr = LinearRegression()
+        self.et = ExtraTreesRegressor(n_estimators=100, random_state=42)
 
     def default_para(self):
         self.ensemble_model()
-        # self._model = StackingClassifier(
+        # # 修改为StackingRegressor或其他适合回归的集成方法
+        # self._model = StackingRegressor(
         #     estimators=[
-        #         ('svc1', self.svc1),
-        #         # ('rf', self.rf),
-        #         ('svc2', self.svc2),
-        #         ('svc3', self.svc3),
+        #         ('svr', self.svr),
+        #         ('rf', self.rf),
         #         ('gb', self.gb)
         #     ],
-        #     final_estimator=GradientBoostingClassifier(n_estimators=50, learning_rate=0.1, max_depth=3, random_state=42),
-        #     cv=5,  # 使用5折交叉验证
-        #     n_jobs=-1,  # 使用所有CPU核进行并行计算
-        #     passthrough=False # 将原始特征传递给元学习器
+        #     final_estimator=GradientBoostingRegressor(n_estimators=50, learning_rate=0.1, max_depth=3, random_state=42),
+        #     cv=5,
+        #     n_jobs=-1,
+        #     passthrough=False
         # )
-        self._model = self.svc1
-
+        self._model = self.svr
     def tuned_para(self):
         param_grid = {
             'n_estimators': [100, 150, 200, 500, 700, 900],
             'max_features': ['auto', 'sqrt', 'log2'],
-            'max_depth': [4, 6, 8, 12, 14, 16],
-            'criterion': ['gini', 'entropy'],
-            'n_jobs': [-1, 1, None]
+            'max_depth': [4, 6, 8, 12, 14, 16]
         }
-        grid_search = GridSearchCV(estimator=RandomForestClassifier(), param_grid=param_grid, cv= 5)
-        grid_search.fit(self.train_features,self.labels)
+        grid_search = GridSearchCV(estimator=RandomForestRegressor(), param_grid=param_grid, cv=5)
+        grid_search.fit(self.train_features[1], self.labels[1])  # 确保使用正确的特征和标签
         print("Best parameters found: ", grid_search.best_params_)
-        self._model = RandomForestClassifier(** grid_search.best_params_)
+        self._model = RandomForestRegressor(**grid_search.best_params_)
 
     def train_test(self, data, mode):
         if mode == 'train':
             kf = KFold(n_splits=10, shuffle=True, random_state=42)
-            accuracies, f1_scores, custom_scores = [], [], []
-            smote = SMOTE(random_state=42)
+            mse_scores, mae_scores, r2_scores = [], [], []
 
-            for train_index, valid_index in kf.split(data):
-                X_train_fold, X_valid_fold = data.iloc[train_index], data.iloc[valid_index]
-                y_train_fold, y_valid_fold = self.labels[train_index], self.labels[valid_index]
+            for i in range(1, 4):
+                # 对于每一折，进行训练和验证
+                for train_index, valid_index in kf.split(data[i]):
+                    X_train_fold, X_valid_fold = data[i].iloc[train_index], data[i].iloc[valid_index]
+                    y_train_fold, y_valid_fold = self.labels[i][train_index], self.labels[i][valid_index]
 
-                # 应用SMOTE来平衡训练数据
-                X_train_fold, y_train_fold = smote.fit_resample(X_train_fold, y_train_fold)
+                    # 训练模型
+                    self._model.fit(X_train_fold, y_train_fold)
 
-                # 输出SMOTE后的样本分布
-                print(f"Fold {kf.get_n_splits()}: Resampled class distribution: {Counter(y_train_fold)}")
+                    # 验证模型
+                    y_pred_fold = self._model.predict(X_valid_fold)
+                    mse = mean_squared_error(y_valid_fold, y_pred_fold)
+                    mae = mean_absolute_error(y_valid_fold, y_pred_fold)
+                    r2 = r2_score(y_valid_fold, y_pred_fold)
 
-                self._model.fit(X_train_fold, y_train_fold)
-                y_pred_fold = self._model.predict(X_valid_fold)
-                acc = accuracy_score(y_valid_fold, y_pred_fold)
-                f1 = f1_score(y_valid_fold, y_pred_fold, average='weighted')
-                custom = self.custom_scorer(y_valid_fold, y_pred_fold)
+                    # 保存每折的评分
+                    mse_scores.append(mse)
+                    mae_scores.append(mae)
+                    r2_scores.append(r2)
 
-                accuracies.append(acc)
-                f1_scores.append(f1)
-                custom_scores.append(custom)
+            # 打印和绘制结果
+            self._print_results(mae_scores, mse_scores, r2_scores)
+            self._plot_results(mae_scores, mse_scores, r2_scores)
 
-            self._print_results(accuracies, f1_scores, custom_scores)
-            self._plot_results(accuracies, f1_scores, custom_scores)
+        elif mode == 'test':
+            # 创建一个空的DataFrame来存储所有预测结果
+            all_results = pd.DataFrame()
 
-        if mode == 'test':
-            predictions = self._model.predict(data)
-            results = pd.DataFrame({'id': self.test_data.iloc[:, 0], 'Group': predictions})
+            # 对每个任务进行预测
+            for i in range(1, 4):
+                X_test = data[i]
+                predictions = self._model.predict(X_test)
+                task_results = pd.DataFrame({
+                    'id': self.test_data[i].iloc[:, 0],  # 假设id是第一列
+                    'Predicted': predictions
+                })
+
+                # 将当前任务的结果添加到最终结果的DataFrame中
+                all_results = pd.concat([all_results, task_results], ignore_index=True)
+
+            # 将所有结果保存到CSV文件
             output_csv = 'result.csv'
-            results.to_csv(output_csv, index=False)
+            all_results.to_csv(output_csv, index=False)
 
     def _print_results(self, maes, rmses, custom_scores):
         print(f'Custom scores (0.5*MAE + 0.5*RMSE): {custom_scores}')
