@@ -37,39 +37,20 @@ class Model:
 
         self.process_data()
 
-        # for i in range(1, 4):
-        #     print(f"self.train_features[i].isna():{self.train_features[i].isna().sum()}")
-        #     print(f"self.test_features[i].isna():{self.test_features[i].isna().sum()}")
-        #
         for i in range(1, 4):
             print(f"self.train_data[i].shape:{self.train_data[i].shape}")
             print(f"self.test_data[i].shape:{self.test_data[i].shape}")
-        # for i in range(1,4):
-        #     print(f"self.train_data[i]:{self.train_data[i]}")
-        #
-        #     print(f"self.test_data[i]:{self.test_data[i]}")
 
-        # for i in range(1,4):
-        #
-        #
-        #     print(self.train_features[i])
-        #     print(self.test_features[i])
-        #     print(self.labels)
+        self.default_para()
+        self.train_and_predict()
 
-            #
-            # self.tuned_para()
-            # self.train_test(self.train_features,'train')
-            # self.train_test(self.test_features, 'test')
     def process_label(self):
-        self.labels[1] = self.train_data[1]['Deceased'] #No存活 ，Yes死亡
-        self.labels[2] = self.train_data[2]['outcome'] #1表示存活, 2表示死亡
-        self.labels[3] = self.train_data[3]['Death (1 Yes 2 No)'] #1死亡，2存活
-        # label_encoder = LabelEncoder()
-        # self.labels = label_encoder.fit_transform(self.labels)
-
-
-        # for i in range(1,4):
-        #     print(self.labels[i])
+        # 将非数值标签转换为数值形式
+        self.labels[1] = self.train_data[1]['Deceased'].map({'No': 0, 'Yes': 1})  # No存活，Yes死亡
+        self.labels[2] = self.train_data[2]['outcome'].map({1: 0, 2: 1})  # 1表示存活, 2表示死亡
+        self.labels[3] = self.train_data[3]['Death (1 Yes 2 No)'].map({1: 1, 2: 0})  # 1死亡，2存活
+        for i in range(1,4):
+            print(self.labels[i])
 
     def process_data(self):
         # 初始化独热编码所需的列
@@ -192,54 +173,63 @@ class Model:
         print("Best parameters found: ", grid_search.best_params_)
         self._model = RandomForestRegressor(**grid_search.best_params_)
 
-    def train_test(self, data, mode):
-        if mode == 'train':
+    def train_and_predict(self):
+        # 创建一个空的DataFrame来存储所有预测结果
+        all_results = pd.DataFrame()
+
+        # 遍历每个任务进行训练和预测
+        for i in range(1, 4):
+            # 获取训练和测试数据
+            X_train = self.train_features[i]
+            y_train = self.labels[i]
+            X_test = self.test_features[i]
+
+            # 进行交叉验证训练模型
             kf = KFold(n_splits=10, shuffle=True, random_state=42)
             mse_scores, mae_scores, r2_scores = [], [], []
 
-            for i in range(1, 4):
-                # 对于每一折，进行训练和验证
-                for train_index, valid_index in kf.split(data[i]):
-                    X_train_fold, X_valid_fold = data[i].iloc[train_index], data[i].iloc[valid_index]
-                    y_train_fold, y_valid_fold = self.labels[i][train_index], self.labels[i][valid_index]
+            for train_index, valid_index in kf.split(X_train):
+                X_train_fold, X_valid_fold = X_train.iloc[train_index], X_train.iloc[valid_index]
+                y_train_fold, y_valid_fold = y_train.iloc[train_index], y_train.iloc[valid_index]
 
-                    # 训练模型
-                    self._model.fit(X_train_fold, y_train_fold)
+                # 训练模型
+                self._model.fit(X_train_fold, y_train_fold)
 
-                    # 验证模型
-                    y_pred_fold = self._model.predict(X_valid_fold)
-                    mse = mean_squared_error(y_valid_fold, y_pred_fold)
-                    mae = mean_absolute_error(y_valid_fold, y_pred_fold)
-                    r2 = r2_score(y_valid_fold, y_pred_fold)
+                # 验证模型
+                y_pred_fold = self._model.predict(X_valid_fold)
+                mse = mean_squared_error(y_valid_fold, y_pred_fold)
+                mae = mean_absolute_error(y_valid_fold, y_pred_fold)
+                r2 = r2_score(y_valid_fold, y_pred_fold)
 
-                    # 保存每折的评分
-                    mse_scores.append(mse)
-                    mae_scores.append(mae)
-                    r2_scores.append(r2)
+                # 保存每折的评分
+                mse_scores.append(mse)
+                mae_scores.append(mae)
+                r2_scores.append(r2)
 
             # 打印和绘制结果
             self._print_results(mae_scores, mse_scores, r2_scores)
             self._plot_results(mae_scores, mse_scores, r2_scores)
 
-        elif mode == 'test':
-            # 创建一个空的DataFrame来存储所有预测结果
-            all_results = pd.DataFrame()
+            # 使用训练后的模型预测测试集
+            predictions = self._model.predict(X_test)
 
-            # 对每个任务进行预测
-            for i in range(1, 4):
-                X_test = data[i]
-                predictions = self._model.predict(X_test)
-                task_results = pd.DataFrame({
-                    'id': self.test_data[i].iloc[:, 0],  # 假设id是第一列
-                    'Predicted': predictions
-                })
+            # 将预测结果限制在0到1之间
+            predictions = np.clip(predictions, 0, 1)
 
-                # 将当前任务的结果添加到最终结果的DataFrame中
-                all_results = pd.concat([all_results, task_results], ignore_index=True)
+            # 将当前任务的结果存储在DataFrame中
+            task_results = pd.DataFrame({
+                'id': self.test_data[i].iloc[:, 0],  # 假设id是第一列
+                'label': predictions  # 使用'label'表示死亡率
+            })
 
-            # 将所有结果保存到CSV文件
-            output_csv = 'result.csv'
-            all_results.to_csv(output_csv, index=False)
+            # 将当前任务的结果添加到最终结果的DataFrame中
+            all_results = pd.concat([all_results, task_results], ignore_index=True)
+
+        # 将所有结果保存到CSV文件
+        output_csv = 'result.csv'
+        all_results.to_csv(output_csv, index=False)
+
+
 
     def _print_results(self, maes, rmses, custom_scores):
         print(f'Custom scores (0.5*MAE + 0.5*RMSE): {custom_scores}')
@@ -259,8 +249,10 @@ class Model:
         plt.tight_layout()
         plt.show()
 
-        def custom_scorer(self, y_true, y_pred):
-            mae = mean_absolute_error(y_true, y_pred)
-            rmse = np.sqrt(mean_squared_error(y_true, y_pred))
-            return 0.5 * mae + 0.5 * rmse
+    def custom_scorer(self, y_true, y_pred):
+        mae = mean_absolute_error(y_true, y_pred)
+        rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+        return 0.5 * mae + 0.5 * rmse
+
+
 model = Model()
