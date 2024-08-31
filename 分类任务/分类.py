@@ -92,11 +92,11 @@ class Model:
         scaler = StandardScaler()
         data=scaler.fit_transform(data)
 
-        #使用PCA降维
-        pca = PCA(n_components=0.95)  # 保留95%的方差
-        data = pca.fit_transform(data)
-        # Mean custom score: 0.9596
-        # Standard deviation: 0.0249
+        # #使用PCA降维
+        # pca = PCA(n_components=0.95)  # 保留95%的方差
+        # data = pca.fit_transform(data)
+        # # Mean custom score: 0.9596
+        # # Standard deviation: 0.0249
 
         # 将 numpy 数组转换回 DataFrame
         data = pd.DataFrame(data)
