@@ -31,6 +31,7 @@ class Model:
         self.train_test(self.train_features,'train')
         self.train_test(self.test_features, 'test')
 
+
     def _print_results(self, accuracies, f1_scores, custom_scores):
         print(f'Custom scores (0.5*Acc + 0.5*F1): {custom_scores}')
         print(f'Mean custom score: {np.mean(custom_scores):.4f}')
@@ -92,6 +93,7 @@ class Model:
         scaler = StandardScaler()
         data=scaler.fit_transform(data)
 
+
         #使用PCA降维
         pca = PCA(n_components=0.95)  # 保留95%的方差
         data = pca.fit_transform(data)
@@ -115,38 +117,40 @@ class Model:
 
     def default_para(self):
         self.ensemble_model()
-        # self._model = StackingClassifier(
-        #     estimators=[
-        #         ('svc1', self.svc1),
-        #         # ('rf', self.rf),
-        #         ('svc2', self.svc2),
-        #         ('svc3', self.svc3),
-        #         ('gb', self.gb)
-        #     ],
-        #     final_estimator=GradientBoostingClassifier(n_estimators=50, learning_rate=0.1, max_depth=3, random_state=42),
-        #     cv=5,  # 使用5折交叉验证
-        #     n_jobs=-1,  # 使用所有CPU核进行并行计算
-        #     passthrough=False # 将原始特征传递给元学习器
-        # )
-        self._model = self.svc1
+        self._model = StackingClassifier(
+            estimators=[
+                ('svc1', self.svc1),
+                ('rf', self.rf),
+                ('svc2', self.svc2),
+                ('svc3', self.svc3),
+                ('gb', self.gb)
+            ],
+            final_estimator=self.lr,
+            cv=10,  # 使用5折交叉验证
+            n_jobs=-1,  # 使用所有CPU核进行并行计算
+            passthrough=False # 将原始特征传递给元学习器
+        )
+        # self._model = self.svc1
 
     def tuned_para(self):
         param_grid = {
-            'n_estimators': [100, 150, 200, 500, 700, 900],
+            'n_estimators': [30, 50, 100],
             'max_features': ['auto', 'sqrt', 'log2'],
             'max_depth': [4, 6, 8, 12, 14, 16],
-            'criterion': ['gini', 'entropy'],
-            'n_jobs': [-1, 1, None]
+            'criterion': ['gini', 'entropy']
         }
-        grid_search = GridSearchCV(estimator=RandomForestClassifier(), param_grid=param_grid, cv= 5)
-        grid_search.fit(self.train_features,self.labels)
+        grid_search = GridSearchCV(estimator=RandomForestClassifier(n_jobs=-1), param_grid=param_grid, cv=5)
+        grid_search.fit(self.train_features, self.labels)
         print("Best parameters found: ", grid_search.best_params_)
-        self._model = RandomForestClassifier(** grid_search.best_params_)
+        self._model = RandomForestClassifier(**grid_search.best_params_, n_jobs=-1)
 
     def train_test(self, data, mode):
         if mode == 'train':
-            kf = KFold(n_splits=10, shuffle=True, random_state=42)
-            accuracies, f1_scores, custom_scores = [], [], []
+            kf = KFold(n_splits=20, shuffle=True, random_state=42)
+            train_accuracies, valid_accuracies = [], []
+            train_f1_scores, valid_f1_scores = [], []
+            train_custom_scores, valid_custom_scores = [], []
+
             smote = SMOTE(random_state=42)
 
             for train_index, valid_index in kf.split(data):
@@ -160,23 +164,69 @@ class Model:
                 print(f"Fold {kf.get_n_splits()}: Resampled class distribution: {Counter(y_train_fold)}")
 
                 self._model.fit(X_train_fold, y_train_fold)
-                y_pred_fold = self._model.predict(X_valid_fold)
-                acc = accuracy_score(y_valid_fold, y_pred_fold)
-                f1 = f1_score(y_valid_fold, y_pred_fold, average='weighted')
-                custom = self.custom_scorer(y_valid_fold, y_pred_fold)
 
-                accuracies.append(acc)
-                f1_scores.append(f1)
-                custom_scores.append(custom)
+                # 预测训练集和验证集
+                y_train_pred_fold = self._model.predict(X_train_fold)
+                y_valid_pred_fold = self._model.predict(X_valid_fold)
 
-            self._print_results(accuracies, f1_scores, custom_scores)
-            self._plot_results(accuracies, f1_scores, custom_scores)
+                # 计算训练集和验证集的准确率和 F1 分数
+                train_acc = accuracy_score(y_train_fold, y_train_pred_fold)
+                valid_acc = accuracy_score(y_valid_fold, y_valid_pred_fold)
+                train_f1 = f1_score(y_train_fold, y_train_pred_fold, average='weighted')
+                valid_f1 = f1_score(y_valid_fold, y_valid_pred_fold, average='weighted')
+
+                # 计算自定义评分
+                train_custom = self.custom_scorer(y_train_fold, y_train_pred_fold)
+                valid_custom = self.custom_scorer(y_valid_fold, y_valid_pred_fold)
+
+                train_accuracies.append(train_acc)
+                valid_accuracies.append(valid_acc)
+                train_f1_scores.append(train_f1)
+                valid_f1_scores.append(valid_f1)
+                train_custom_scores.append(train_custom)
+                valid_custom_scores.append(valid_custom)
+
+            # 打印并绘制训练集和验证集的结果
+            self._plot_comparison(train_accuracies, valid_accuracies, train_f1_scores, valid_f1_scores, train_custom_scores, valid_custom_scores)
+            self._print_results(valid_accuracies, valid_f1_scores, valid_custom_scores)
 
         if mode == 'test':
             predictions = self._model.predict(data)
             results = pd.DataFrame({'id': self.test_data.iloc[:, 0], 'Group': predictions})
             output_csv = 'result.csv'
             results.to_csv(output_csv, index=False)
+    def _plot_comparison(self, train_acc, valid_acc, train_f1, valid_f1, train_custom, valid_custom):
+        plt.figure(figsize=(20, 6))
+
+        # 准确率对比
+        plt.subplot(1, 3, 1)
+        plt.plot(range(1, len(train_acc) + 1), train_acc, label='Train Accuracy', marker='o')
+        plt.plot(range(1, len(valid_acc) + 1), valid_acc, label='Validation Accuracy', marker='o')
+        plt.xlabel('Fold Number')
+        plt.ylabel('Accuracy')
+        plt.title('Train vs Validation Accuracy')
+        plt.legend()
+
+        # F1 分数对比
+        plt.subplot(1, 3, 2)
+        plt.plot(range(1, len(train_f1) + 1), train_f1, label='Train F1 Score', marker='o')
+        plt.plot(range(1, len(valid_f1) + 1), valid_f1, label='Validation F1 Score', marker='o')
+        plt.xlabel('Fold Number')
+        plt.ylabel('F1 Score')
+        plt.title('Train vs Validation F1 Score')
+        plt.legend()
+
+        # 自定义评分对比
+        plt.subplot(1, 3, 3)
+        plt.plot(range(1, len(train_custom) + 1), train_custom, label='Train Custom Score', marker='o')
+        plt.plot(range(1, len(valid_custom) + 1), valid_custom, label='Validation Custom Score', marker='o')
+        plt.xlabel('Fold Number')
+        plt.ylabel('Custom Score')
+        plt.title('Train vs Validation Custom Score')
+        plt.legend()
+
+        plt.tight_layout()
+        plt.show()
+
 
 model = Model()
-
