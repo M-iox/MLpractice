@@ -1,14 +1,18 @@
-from sklearn.model_selection import train_test_split, KFold, GridSearchCV
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from sklearn.model_selection import train_test_split, KFold, GridSearchCV,RandomizedSearchCV
+from sklearn.metrics import accuracy_score, f1_score
+from sklearn.preprocessing import LabelEncoder
 from sklearn.impute import SimpleImputer
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from sklearn.svm import SVR
+from imblearn.over_sampling import SMOTE
+from collections import Counter
+from sklearn.svm import SVC
 from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import Normalizer
 from sklearn.decomposition import PCA
-from sklearn.ensemble import VotingRegressor, RandomForestRegressor, GradientBoostingRegressor, StackingRegressor
-from sklearn.ensemble import ExtraTreesRegressor
+from sklearn.ensemble import VotingClassifier, RandomForestClassifier, GradientBoostingClassifier,StackingClassifier
+
 
 class Model:
     def __init__(self):
@@ -160,10 +164,12 @@ class Model:
 
     def ensemble_model(self):
         # 使用回归模型替代分类模型
-        self.svr = SVR(kernel='rbf', C=1, gamma='scale')
-        self.rf = RandomForestRegressor(n_estimators=100, max_depth=10, min_samples_split=5, random_state=42)
-        self.gb = GradientBoostingRegressor(n_estimators=100, learning_rate=0.05, max_depth=5, random_state=42)
-        self.et = ExtraTreesRegressor(n_estimators=100, random_state=42)
+
+        self.rf = RandomForestClassifier(n_estimators=100, max_depth=10, min_samples_split=5, random_state=42)
+        self.svc1 = SVC(kernel='rbf', C=1, gamma='scale', probability=True, random_state=42)  # 使用RBF核函数
+        self.svc2 = SVC(kernel='linear', C=0.1, probability=True, random_state=42)  # 使用线性核函数
+        self.svc3 = SVC(kernel='poly', degree=3, C=0.5, gamma='scale', probability=True,
+                        random_state=42)  # 使用多项式核函数
 
     def default_para(self):
         self.ensemble_model()
@@ -181,15 +187,7 @@ class Model:
         # )
         self._model = self.rf
     def tuned_para(self):
-        param_grid = {
-            'C': [0.1, 1, 10, 100],
-            'gamma': [0.001, 0.01, 0.1, 1],
-            'kernel': ['rbf', 'linear']
-        }
-        grid_search = GridSearchCV(estimator=SVR(), param_grid=param_grid, cv=10, n_jobs=-1, verbose=1)
-        grid_search.fit(self.train_features, self.labels)  # 确保使用正确的特征和标签
-        print("Best parameters found: ", grid_search.best_params_)
-        self._model = SVR(**grid_search.best_params_)
+         pass
 
     def train_and_predict(self):
         all_results = pd.DataFrame()
