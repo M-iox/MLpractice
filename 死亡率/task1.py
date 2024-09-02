@@ -15,6 +15,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
 from xgboost import XGBClassifier
+from imblearn.over_sampling import SMOTE
 class Model:
     def __init__(self):
         self.train_data = pd.read_csv('train1.csv')
@@ -66,7 +67,6 @@ class Model:
 
         self.test_features['Troponin'] = self.train_features['Troponin'].apply(
             lambda x: 0 if x == 'Negative' else float(x) if isinstance(x, str) and x.replace('.', '',
-
                                                                                              1).isdigit() else x)
 
         # 数据预处理：提取特征和标签
@@ -75,6 +75,28 @@ class Model:
 
         # 测试集去掉编码
         self.test_features =self.test_features.drop(columns=['Patient Code'])  # 去掉患者编码
+
+        # 定义填充缺失值的方式
+        imputer = SimpleImputer(strategy='most_frequent')
+
+        # 填充缺失值
+        self.train_features= pd.DataFrame(imputer.fit_transform(self.train_features),
+                                                   columns=self.train_features.columns)
+        self.test_features= pd.DataFrame(imputer.transform(self.test_features),
+                                                  columns=self.test_features.columns)
+
+        # 特征选择
+        model = RandomForestClassifier(n_estimators=100, random_state=42)
+        model.fit(self.train_features, self.labels)
+
+        # 获取特征重要性并排序
+        importances = model.feature_importances_
+        indices = np.argsort(importances)[::-1]
+
+        # 选择前20个重要特征
+        top_features = [self.train_features.columns[i] for i in indices[:20]]
+        self.train_features = self.train_features[top_features]
+        self.test_features = self.test_features[top_features]
 
         return self.train_features , self.test_features
 
