@@ -1,15 +1,22 @@
+from sklearn.preprocessing import LabelEncoder
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.svm import SVC
 import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split, KFold
 from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
-from sklearn.metrics import roc_auc_score
-import matplotlib.pyplot as plt
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-import numpy as np
-from sklearn.model_selection import train_test_split, KFold
+from sklearn.metrics import mean_squared_error, mean_absolute_error, accuracy_score, f1_score
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.svm import SVC
+from xgboost import XGBClassifier
+from sklearn.ensemble import StackingClassifier
+
 class Model:
     def __init__(self):
         self.train_data = pd.read_excel('train2.xlsx')
@@ -67,10 +74,23 @@ class Model:
         return self.train_features , self.test_features
 
     def default_para(self):
+        # 基础模型
+        model1 = GradientBoostingClassifier(random_state=42, n_estimators=100, learning_rate=0.0015, max_depth=7)
+        model2 = LogisticRegression(random_state=42, max_iter=1000)
+        model3 = SVC(kernel='rbf', probability=True, random_state=42)
+        model4 = RandomForestClassifier(random_state=42, n_estimators=100, max_depth=5)
+        # 堆叠模型
         pipeline = Pipeline([
             ('imputer', SimpleImputer(strategy='mean')),  # 使用均值填补缺失值
             ('scaler', StandardScaler()),  # 数据标准化
-            ('classifier', RandomForestClassifier(random_state=42, n_estimators=100))  # 随机森林分类器
+            ('classifier', StackingClassifier(
+                estimators=[('gb', model1),
+                            ('lr', model2),
+                            ('svc', model3),
+                            ('rf',model4)
+                            ],
+                final_estimator=GradientBoostingClassifier(random_state=42)  # 最终分类器
+            ))
         ])
         self._model = pipeline
 
