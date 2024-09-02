@@ -126,7 +126,7 @@ class Model:
 
         if mode == 'test':
             predictions_proba = self._model.predict_proba(data)[:, 1]
-            results = pd.DataFrame({'id': self.test_data.iloc[:, 0], 'Probability': predictions_proba})
+            results = pd.DataFrame({'id': self.test_data.iloc[:, 0], 'label': predictions_proba})
             output_csv = 'result1.csv'
             results.to_csv(output_csv, index=False)
 

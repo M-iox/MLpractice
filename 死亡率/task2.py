@@ -60,7 +60,6 @@ class Model:
         # 数据预处理：提取特征和标签
         self.labels = self.train_features['outcome'].apply(lambda x: 1 if x == 2 else 0)  # 转换标签为0和1
         self.train_features = self.train_features.drop(columns=['Sl 2', 'outcome'])  # 去掉患者编码和标签
-        print(f"self.labels:{self.labels}")
 
         # 测试集去掉编码
         self.test_features =self.test_features.drop(columns=['Patient Code'])  # 去掉患者编码
@@ -120,7 +119,7 @@ class Model:
 
         if mode == 'test':
             predictions_proba = self._model.predict_proba(data)[:, 1]
-            results = pd.DataFrame({'id': self.test_data.iloc[:, 0], 'Probability': predictions_proba})
+            results = pd.DataFrame({'id': self.test_data.iloc[:, 0], 'label': predictions_proba})
             output_csv = 'result2.csv'
             results.to_csv(output_csv, index=False)
 

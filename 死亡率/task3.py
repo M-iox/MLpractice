@@ -10,10 +10,11 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import numpy as np
 from sklearn.model_selection import train_test_split, KFold
+from sklearn.preprocessing import LabelEncoder
 class Model:
     def __init__(self):
-        self.train_data = pd.read_excel('train2.xlsx')
-        self.test_data = pd.read_csv('test2.csv')
+        self.train_data = pd.read_excel('train3.xlsx')
+        self.test_data = pd.read_csv('test3.csv', encoding='latin1')
         self.train_features,self.test_features = self.process_data()
 
         self.default_para()
@@ -47,25 +48,64 @@ class Model:
         plt.show()
 
     def process_data(self):
+        # 复制数据
         self.train_features = self.train_data.copy()
         self.test_features = self.test_data.copy()
 
-        # 去掉列名的空格
-        self.train_features.rename(columns=lambda x: x.strip(), inplace=True)
-        self.test_features.rename(columns=lambda x: x.strip(), inplace=True)
-
-        self.train_features['Age']=self.train_features['Age'].map({'60-70': 1, '71-80': 2, '>80': 3})
-        self.test_features['Age'] = self.train_features['Age'].map({'60-70': 1, '71-80': 2, '>80': 3})
-
         # 数据预处理：提取特征和标签
-        self.labels = self.train_features['outcome'].apply(lambda x: 1 if x == 2 else 0)  # 转换标签为0和1
-        self.train_features = self.train_features.drop(columns=['Sl 2', 'outcome'])  # 去掉患者编码和标签
+        self.labels = self.train_features['Death (1 Yes 2 No)'].apply(lambda x: 1 if x == 1 else 0)  # 转换标签为0和1
+        self.train_features = self.train_features.drop(columns=['Number', 'Death (1 Yes 2 No)'])  # 去掉患者编码和标签
+        self.test_features = self.test_features.drop(columns=['Patient Code'])  # 去掉测试集中的患者编码
         print(f"self.labels:{self.labels}")
 
-        # 测试集去掉编码
-        self.test_features =self.test_features.drop(columns=['Patient Code'])  # 去掉患者编码
+        # 统一测试集中的特征名称
+        self.test_features = self.test_features.rename(columns={
+            'Patient Code': 'Number',
+            'Disease onset D1 highest body temperature[¡æ]': 'Disease onset D1 highest body temperature[℃]',
+            'creatinine[¦Ìmol/L]': 'creatinine[μmol/L]',
+            'total bilirubin[¦Ìmol/L]': 'total bilirubin[μmol/L]'
+        })
 
-        return self.train_features , self.test_features
+        # 获取所有 object 类型的列
+        train_object_columns = self.train_features.select_dtypes(include=['object']).columns
+        test_object_columns = self.test_features.select_dtypes(include=['object']).columns
+
+        # 转换 object 类型的列为数值型，记录无法转换的列
+        train_conversion_issues = []
+        test_conversion_issues = []
+
+        for col in train_object_columns:
+            try:
+                self.train_features[col] = pd.to_numeric(self.train_features[col], errors='raise')
+            except ValueError:
+                train_conversion_issues.append(col)
+
+        for col in test_object_columns:
+            try:
+                self.test_features[col] = pd.to_numeric(self.test_features[col], errors='raise')
+            except ValueError:
+                test_conversion_issues.append(col)
+
+        # 对无法转换的列进行处理，使用 LabelEncoder 对分类特征编码
+        label_encoders = {}
+        for col in train_conversion_issues:
+            if self.train_features[col].dtype == 'object':
+                le = LabelEncoder()
+                self.train_features[col] = le.fit_transform(self.train_features[col].astype(str))
+                self.test_features[col] = self.test_features[col].apply(
+                    lambda x: le.transform([x])[0] if x in le.classes_ else -1)
+                label_encoders[col] = le
+
+        # 再次尝试将这些列转换为数值型
+        for col in train_conversion_issues:
+            self.train_features[col] = pd.to_numeric(self.train_features[col], errors='coerce')
+            self.test_features[col] = pd.to_numeric(self.test_features[col], errors='coerce')
+
+        # 针对测试集中剩余的 object 类型列 `NRL[%]` 进行处理
+        if 'NRL[%]' in self.test_features.columns:
+            self.test_features['NRL[%]'] = pd.to_numeric(self.test_features['NRL[%]'], errors='coerce')
+
+        return self.train_features, self.test_features
 
     def default_para(self):
         pipeline = Pipeline([
@@ -120,8 +160,8 @@ class Model:
 
         if mode == 'test':
             predictions_proba = self._model.predict_proba(data)[:, 1]
-            results = pd.DataFrame({'id': self.test_data.iloc[:, 0], 'Probability': predictions_proba})
-            output_csv = 'result2.csv'
+            results = pd.DataFrame({'id': self.test_data.iloc[:, 0], 'label': predictions_proba})
+            output_csv = 'result3.csv'
             results.to_csv(output_csv, index=False)
 
 model = Model()
