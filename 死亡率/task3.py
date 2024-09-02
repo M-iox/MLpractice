@@ -1,16 +1,20 @@
+from sklearn.preprocessing import LabelEncoder
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.svm import SVC
 import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split, KFold
 from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
-from sklearn.metrics import roc_auc_score
-import matplotlib.pyplot as plt
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-import numpy as np
-from sklearn.model_selection import train_test_split, KFold
-from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import mean_squared_error, mean_absolute_error, accuracy_score, f1_score
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.svm import SVC
+from xgboost import XGBClassifier
 class Model:
     def __init__(self):
         self.train_data = pd.read_excel('train3.xlsx')
