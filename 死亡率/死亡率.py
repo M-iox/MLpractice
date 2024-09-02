@@ -1,18 +1,16 @@
-from sklearn.model_selection import train_test_split, KFold, GridSearchCV,RandomizedSearchCV
-from sklearn.metrics import accuracy_score, f1_score
-from sklearn.preprocessing import LabelEncoder
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.model_selection import train_test_split, KFold, GridSearchCV
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from sklearn.impute import SimpleImputer
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from imblearn.over_sampling import SMOTE
-from collections import Counter
-from sklearn.svm import SVC
+from sklearn.svm import SVR, SVC
 from sklearn.preprocessing import StandardScaler
-from sklearn.preprocessing import Normalizer
 from sklearn.decomposition import PCA
-from sklearn.ensemble import VotingClassifier, RandomForestClassifier, GradientBoostingClassifier,StackingClassifier
-
+from sklearn.ensemble import VotingRegressor, RandomForestRegressor, GradientBoostingRegressor, StackingRegressor, \
+    RandomForestClassifier
+from sklearn.ensemble import ExtraTreesRegressor
 
 class Model:
     def __init__(self):
@@ -28,6 +26,7 @@ class Model:
         self.test_data[3] = pd.read_csv('test3.csv', encoding='latin1')
 
         self.train_data[1] = pd.read_csv('train1.csv')
+        #self.train_data[1] = pd.read_excel('data1.xlsx', sheet_name='Sheet2')
         # train2 和 train3 是 Excel 文件
         self.train_data[2] = pd.read_excel('train2.xlsx', sheet_name='Sheet1')
         self.train_data[3] = pd.read_excel('train3.xlsx', sheet_name='Sheet1')
@@ -93,9 +92,18 @@ class Model:
             self.train_features[i] = self.handle_outliers(self.train_features[i])
             self.test_features[i] = self.handle_outliers(self.test_features[i])
             # 标准化和PCA降维
-            # self.train_features[i] = self.standardize_and_reduce(self.train_features[i], fit=True)
+            self.train_features[i] = self.standardize_and_reduce(self.train_features[i], fit=True)
             # self.test_features[i] = self.standardize_and_reduce(self.test_features[i], fit=False)
 
+        for i in range(1, 4):
+            # print(i)
+            self.test_features[i] = self.handle_missing_and_encode(self.test_features[i])
+
+            # 独热编码的去重和对齐
+            self.train_features[i] = self.train_features[i].loc[:, ~self.train_features[i].columns.duplicated()]
+            self.test_features[i] = self.test_features[i].loc[:, ~self.test_features[i].columns.duplicated()]
+
+            self.test_features[i] = self.test_features[i].reindex(columns=self.train_features[i].columns, fill_value=0)
     def handle_outliers(self, data, threshold=1.5):
         """
         使用IQR（四分位距）方法来处理数据中的异常值
@@ -164,13 +172,13 @@ class Model:
 
     def ensemble_model(self):
         # 使用回归模型替代分类模型
-
+        self.svr = SVR(kernel='rbf', C=1, gamma='scale')
         self.rf = RandomForestClassifier(n_estimators=100, max_depth=10, min_samples_split=5, random_state=42)
+        self.gb = GradientBoostingRegressor(n_estimators=100, learning_rate=0.05, max_depth=5, random_state=42)
+        self.et = ExtraTreesRegressor(n_estimators=100, random_state=42)
         self.svc1 = SVC(kernel='rbf', C=1, gamma='scale', probability=True, random_state=42)  # 使用RBF核函数
         self.svc2 = SVC(kernel='linear', C=0.1, probability=True, random_state=42)  # 使用线性核函数
-        self.svc3 = SVC(kernel='poly', degree=3, C=0.5, gamma='scale', probability=True,
-                        random_state=42)  # 使用多项式核函数
-
+        self.svc3 = SVC(kernel='poly', degree=3, C=0.5, gamma='scale', probability=True, random_state=42)  # 使用多项式核函数
     def default_para(self):
         self.ensemble_model()
         # # 修改为StackingRegressor或其他适合回归的集成方法
@@ -185,10 +193,28 @@ class Model:
         #     n_jobs=-1,
         #     passthrough=False
         # )
-        self._model = self.rf
-    def tuned_para(self):
-         pass
+        self._model = self.svc2
 
+    def tuned_para(self):
+        param_grid = {
+            'C': [0.1, 1, 10, 100],
+            'gamma': [0.001, 0.01, 0.1, 1],
+            'kernel': ['rbf', 'linear']
+        }
+        grid_search = GridSearchCV(estimator=SVR(), param_grid=param_grid, cv=10, n_jobs=-1, verbose=1)
+        grid_search.fit(self.train_features, self.labels)  # 确保使用正确的特征和标签
+        print("Best parameters found: ", grid_search.best_params_)
+        self._model = SVR(**grid_search.best_params_)
+
+    def svc_predict(self, data_order, data):
+        self.calibrated_svm = CalibratedClassifierCV(estimator=self._model, method='sigmoid', cv='prefit')
+        self.calibrated_svm.fit(self.train_features[data_order], self.labels[data_order])
+
+        if data_order == 1 or 2:
+            result = self.calibrated_svm.predict_proba(data)[:, 1]
+        if data_order == 3:
+            result = self.calibrated_svm.predict_proba(data)[:, 0]
+        return result
     def train_and_predict(self):
         all_results = pd.DataFrame()
 
@@ -213,8 +239,8 @@ class Model:
                 self._model.fit(X_train_fold, y_train_fold)
 
                 # 在训练集和验证集上进行预测
-                y_train_pred_fold = self._model.predict(X_train_fold)
-                y_valid_pred_fold = self._model.predict(X_valid_fold)
+                y_train_pred_fold = self.svc_predict(i, data = X_train_fold)
+                y_valid_pred_fold = self.svc_predict(i, data = X_valid_fold)
 
                 # 计算训练集和验证集的各项指标
                 train_mae = mean_absolute_error(y_train_fold, y_train_pred_fold)
@@ -249,7 +275,7 @@ class Model:
             print(f"Dataset {i} - Valid Custom Score: Mean={np.mean(valid_custom_scores):.4f}, Std={np.std(valid_custom_scores):.4f}")
             print('\n')
             # 对测试集进行预测
-            predictions = self._model.predict(X_test)
+            predictions = self.svc_predict(i, data = X_test)
             predictions = np.clip(predictions, 0, 1)
 
             task_results = pd.DataFrame({
