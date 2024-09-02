@@ -16,6 +16,8 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
 from xgboost import XGBClassifier
 from sklearn.ensemble import StackingClassifier
+from sklearn.decomposition import PCA
+from imblearn.over_sampling import SMOTE
 
 class Model:
     def __init__(self):
@@ -61,36 +63,60 @@ class Model:
         self.train_features.rename(columns=lambda x: x.strip(), inplace=True)
         self.test_features.rename(columns=lambda x: x.strip(), inplace=True)
 
-        self.train_features['Age']=self.train_features['Age'].map({'60-70': 1, '71-80': 2, '>80': 3})
-        self.test_features['Age'] = self.train_features['Age'].map({'60-70': 1, '71-80': 2, '>80': 3})
+        # 对 Age 列进行编码
+        self.train_features['Age'] = self.train_features['Age'].map({'60-70': 1, '71-80': 2, '>80': 3})
+        self.test_features['Age'] = self.test_features['Age'].map({'60-70': 1, '71-80': 2, '>80': 3})
 
         # 数据预处理：提取特征和标签
         self.labels = self.train_features['outcome'].apply(lambda x: 1 if x == 2 else 0)  # 转换标签为0和1
         self.train_features = self.train_features.drop(columns=['Sl 2', 'outcome'])  # 去掉患者编码和标签
+        self.test_features = self.test_features.drop(columns=['Patient Code'])  # 去掉患者编码
 
-        # 测试集去掉编码
-        self.test_features =self.test_features.drop(columns=['Patient Code'])  # 去掉患者编码
+        # 定义填充缺失值的方式
+        imputer = SimpleImputer(strategy='most_frequent')
+
+        # 填充缺失值
+        self.train_features_imputed = pd.DataFrame(imputer.fit_transform(self.train_features),
+                                                   columns=self.train_features.columns)
+        self.test_features_imputed = pd.DataFrame(imputer.transform(self.test_features),
+                                                  columns=self.test_features.columns)
+
+        # 对 Age 列进行编码
+        label_encoder = LabelEncoder()
+        self.train_features_imputed['Age'] = label_encoder.fit_transform(self.train_features_imputed['Age'])
+        self.test_features_imputed['Age'] = label_encoder.transform(self.test_features_imputed['Age'])
+
+        # 特征选择
+        model = RandomForestClassifier(n_estimators=100, random_state=42)
+        model.fit(self.train_features_imputed, self.labels)
+
+        # 获取特征重要性并排序
+        importances = model.feature_importances_
+        indices = np.argsort(importances)[::-1]
+
+        # 选择前20个重要特征
+        top_features = [self.train_features_imputed.columns[i] for i in indices[:20]]
+        self.train_features = self.train_features_imputed[top_features]
+        self.test_features = self.test_features_imputed[top_features]
+
+        # # 进行PCA
+        # pca = PCA(n_components=30)  # 选择30个主成分
+        # self.train_features= pd.DataFrame(pca.fit_transform(self.train_features_imputed))
+        # self.test_features= pd.DataFrame(pca.transform(self.test_features_imputed))
 
         return self.train_features , self.test_features
 
     def default_para(self):
         # 基础模型
-        model1 = GradientBoostingClassifier(random_state=42, n_estimators=100, learning_rate=0.0015, max_depth=7)
         model2 = LogisticRegression(random_state=42, max_iter=1000)
         model3 = SVC(kernel='rbf', probability=True, random_state=42)
         model4 = RandomForestClassifier(random_state=42, n_estimators=100, max_depth=5)
+
         # 堆叠模型
         pipeline = Pipeline([
             ('imputer', SimpleImputer(strategy='mean')),  # 使用均值填补缺失值
             ('scaler', StandardScaler()),  # 数据标准化
-            ('classifier', StackingClassifier(
-                estimators=[('gb', model1),
-                            ('lr', model2),
-                            ('svc', model3),
-                            ('rf',model4)
-                            ],
-                final_estimator=GradientBoostingClassifier(random_state=42)  # 最终分类器
-            ))
+            ('classifier', model3)
         ])
         self._model = pipeline
 
@@ -99,6 +125,9 @@ class Model:
         pass
 
     def train_test(self, data, mode):
+        # 应用SMOTE
+
+
         if mode == 'train':
             kf = KFold(n_splits=7, shuffle=True, random_state=42)
             train_maes, valid_maes = [], []
