@@ -13,14 +13,14 @@ def run_task(script_name):
 def merge_csv(output_file, *input_files):
     df_list = []
     for file in input_files:
-        df = pd.read_csv(file)
+        # 设置index_col=0以保留原始索引
+        df = pd.read_csv(file, index_col=0)
         df_list.append(df)
 
     # 合并所有数据框
-    result_all = pd.concat(df_list, ignore_index=True)
-    result_all.to_csv(output_file, index=False)
+    result_all = pd.concat(df_list)
+    result_all.to_csv(output_file)
     print(f"结果已合并并保存至 {output_file}")
-
 
 if __name__ == "__main__":
     # 运行 task1.py, task2.py, task3.py

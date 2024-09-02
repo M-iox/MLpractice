@@ -15,6 +15,12 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
 from xgboost import XGBClassifier
+from imblearn.over_sampling import SMOTE
+from sklearn.decomposition import PCA
+from sklearn.model_selection import LeaveOneOut
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.feature_selection import SelectFromModel
+
 class Model:
     def __init__(self):
         self.train_data = pd.read_excel('train3.xlsx')
@@ -109,23 +115,81 @@ class Model:
         if 'NRL[%]' in self.test_features.columns:
             self.test_features['NRL[%]'] = pd.to_numeric(self.test_features['NRL[%]'], errors='coerce')
 
+        # 检查是否有全为 NaN 的列
+        nan_columns_train = self.train_features.columns[self.train_features.isna().all()].tolist()
+        nan_columns_test = self.test_features.columns[self.test_features.isna().all()].tolist()
+
+        # 如果有完全为 NaN 的列，手动处理这些列（如删除或填充）
+        if nan_columns_train or nan_columns_test:
+            print("Columns with all NaN in train:", nan_columns_train)
+            print("Columns with all NaN in test:", nan_columns_test)
+            self.train_features.drop(columns=nan_columns_train, inplace=True)
+            self.test_features.drop(columns=nan_columns_test, inplace=True)
+
+        # 处理缺失值
+        common_columns = self.train_features.columns.intersection(self.test_features.columns)
+        self.train_features = self.train_features[common_columns]
+        self.test_features = self.test_features[common_columns]
+
+        imputer = SimpleImputer(strategy='mean')
+        self.train_features = pd.DataFrame(imputer.fit_transform(self.train_features),
+                                           columns=common_columns)
+        self.test_features = pd.DataFrame(imputer.transform(self.test_features),
+                                          columns=common_columns)
+
+
         return self.train_features, self.test_features
 
     def default_para(self):
+        # 使用随机森林进行特征选择
+        feature_selector = SelectFromModel(RandomForestClassifier(n_estimators=100, random_state=42))
+        # 使用选定的PCA主成分数目
         pipeline = Pipeline([
             ('imputer', SimpleImputer(strategy='mean')),  # 使用均值填补缺失值
             ('scaler', StandardScaler()),  # 数据标准化
-            ('classifier', RandomForestClassifier(random_state=42, n_estimators=100))  # 随机森林分类器
+            ('feature_selector', feature_selector),  # 加入特征选择步骤
+            # ('pca', PCA(n_components=self.n_components)),  # 使用推荐的主成分数目
+            ('classifier', LogisticRegression(random_state=42, penalty='l2', solver='liblinear', C=1))
         ])
         self._model = pipeline
 
+    def determine_pca_components(self):
+        # 标准化数据
+        scaler = StandardScaler()
+        scaled_features = scaler.fit_transform(self.train_features)
+
+        # 使用PCA进行降维
+        pca = PCA().fit(scaled_features)
+
+        # 累积解释方差比例
+        explained_variance_ratio = np.cumsum(pca.explained_variance_ratio_)
+
+        # 绘制累积解释方差曲线
+        plt.figure(figsize=(10, 6))
+        plt.plot(range(1, len(explained_variance_ratio) + 1), explained_variance_ratio, marker='o', linestyle='--')
+        plt.title('Cumulative Explained Variance by Number of Principal Components')
+        plt.xlabel('Number of Principal Components')
+        plt.ylabel('Cumulative Explained Variance')
+        plt.grid()
+        plt.show()
+
+        # 打印解释方差达到90%和95%时对应的主成分数目
+        n_components_90 = np.argmax(explained_variance_ratio >= 0.90) + 1
+        n_components_95 = np.argmax(explained_variance_ratio >= 0.95) + 1
+
+        print(f'Number of components for 90% explained variance: {n_components_90}')
+        print(f'Number of components for 95% explained variance: {n_components_95}')
+
+        # 返回推荐的主成分数目
+        self.n_components = n_components_95
     def tuned_para(self):
         self.default_para()
         pass
 
     def train_test(self, data, mode):
         if mode == 'train':
-            kf = KFold(n_splits=7, shuffle=True, random_state=42)
+            kf = KFold(n_splits=10, shuffle=True, random_state=42)
+            loo = LeaveOneOut()
             train_maes, valid_maes = [], []
             train_rmses, valid_rmses = [], []
             train_custom_scores, valid_custom_scores = [], []
@@ -134,7 +198,12 @@ class Model:
                 X_train_fold, X_valid_fold = data.iloc[train_index], data.iloc[valid_index]
                 y_train_fold, y_valid_fold = self.labels[train_index], self.labels[valid_index]
 
-                self._model.fit(X_train_fold, y_train_fold)
+                # self._model.fit(X_train_fold, y_train_fold)
+                # 应用 SMOTE 仅在训练数据上
+                smote = SMOTE(random_state=42)
+                X_train_fold_resampled, y_train_fold_resampled = smote.fit_resample(X_train_fold, y_train_fold)
+
+                self._model.fit(X_train_fold_resampled, y_train_fold_resampled)
 
                 # 预测训练集和验证集
                 y_train_pred_fold = self._model.predict(X_train_fold)
@@ -163,7 +232,11 @@ class Model:
             self._print_results(valid_maes, valid_rmses, valid_custom_scores)
 
         if mode == 'test':
-            predictions_proba = self._model.predict_proba(data)[:, 1]
+            self._model.fit(self.train_features, self.labels)
+            calibrated_model = CalibratedClassifierCV(self._model, method='sigmoid', cv='prefit')
+            calibrated_model.fit(self.train_features, self.labels)
+            predictions_proba = calibrated_model.predict_proba(data)[:, 1]
+
             results = pd.DataFrame({'id': self.test_data.iloc[:, 0], 'label': predictions_proba})
             output_csv = 'result3.csv'
             results.to_csv(output_csv, index=False)

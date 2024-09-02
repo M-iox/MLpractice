@@ -1,132 +1,131 @@
-from sklearn.calibration import CalibratedClassifierCV
-from sklearn.model_selection import train_test_split, KFold, GridSearchCV
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-from sklearn.impute import SimpleImputer
-import numpy as np
+from sklearn.feature_selection import SelectFromModel
 import pandas as pd
-import matplotlib.pyplot as plt
-from sklearn.svm import SVR, SVC
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.impute import SimpleImputer
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
+from sklearn.metrics import mean_squared_error, mean_absolute_error
+import numpy as np
 from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVC
 from sklearn.decomposition import PCA
-from sklearn.ensemble import VotingRegressor, RandomForestRegressor, GradientBoostingRegressor, StackingRegressor, \
-    RandomForestClassifier
-from sklearn.ensemble import ExtraTreesRegressor
 
-class Model:
+
+
+class model:
     def __init__(self):
-        self.train_data = {}  # 使用字典来存储数据
-        self.test_data = {}
-        self.train_features = {}
-        self.test_features = {}
-        self.labels = {}
+        # 加载训练集数据
+        self.file_path = './train3.xlsx'
+        self.train_data = pd.read_excel(self.file_path)
+        self.X_train = self.train_data.drop(columns=['Number', 'Death (1 Yes 2 No)'])
+        self.y_train = self.train_data['Death (1 Yes 2 No)'].apply(lambda x: 1 if x == 1 else 0)
 
-        # 读取数据
-        self.test_data[1] = pd.read_csv('test1.csv')
-        self.test_data[2] = pd.read_csv('test2.csv')
-        self.test_data[3] = pd.read_csv('test3.csv', encoding='latin1')
+        # 加载测试数据
+        self.test_file_path = './test3.csv'
+        self.test_data_processed = pd.read_csv(self.test_file_path, encoding='ISO-8859-1')
+        self.id_number = self.test_data_processed['Patient Code']
+        self.test_data_processed = self.test_data_processed.drop(columns=['Patient Code'])
+        # 去掉空格
+        self.X_train.columns = self.X_train.columns.str.strip()
+        self.test_data_processed.columns = self.test_data_processed.columns.str.strip()
 
-        self.train_data[1] = pd.read_csv('train1.csv')
-        #self.train_data[1] = pd.read_excel('data1.xlsx', sheet_name='Sheet2')
-        # train2 和 train3 是 Excel 文件
-        self.train_data[2] = pd.read_excel('train2.xlsx', sheet_name='Sheet1')
-        self.train_data[3] = pd.read_excel('train3.xlsx', sheet_name='Sheet1')
-
-        self.train_features = {i: self.train_data[i].copy() for i in range(1, 4)}
-        self.test_features = {i: self.test_data[i].copy() for i in range(1, 4)}
-        self.labels = {1: 'label1', 2: 'label2', 3: 'label3'}
-
-        self.process_data()
-
-        self.default_para()
-        self.train_and_predict()
-
-    def process_label(self):
-        # 将非数值标签转换为数值形式
-        self.labels[1] = self.train_data[1]['Deceased'].map({'No': 0, 'Yes': 1})  # No存活，Yes死亡
-        self.labels[2] = self.train_data[2]['outcome'].map({1: 0, 2: 1})  # 1表示存活, 2表示死亡
-        self.labels[3] = self.train_data[3]['Death (1 Yes 2 No)'].map({1: 1, 2: 0})  # 1死亡，2存活
-        for i in range(1,4):
-            print(self.labels[i])
-
-    def process_data(self):
-        # 初始化独热编码所需的列
-        self.encoder_columns = None
-        # 初始化标准化和PCA对象
+        # 初始化scaler和pca
         self.scaler = StandardScaler()
-        self.pca = PCA(n_components=0.95)  # 保留95%的方差
+        self.pca = PCA(n_components=0.95)
 
-        for i in range(1,4):
-            # 去掉列名的空格
-            self.train_features[i].columns = self.train_features[i].columns.str.strip()
-            self.test_features[i].columns = self.test_features[i].columns.str.strip()
+        # 数据处理
+        self.X_train = self.data_process(self.X_train)
+        self.test_data_processed = self.data_process(self.test_data_processed)
 
-            # 将空字符串替换为 NaN
-            self.train_features[i]= self.train_features[i].replace('', pd.NA)
-            self.test_features[i]= self.test_features[i].replace('', pd.NA)
+        # 独热编码的去重和对齐
+        self.X_train = self.X_train.loc[:, ~self.X_train.columns.duplicated()]
+        self.test_data_processed = self.test_data_processed.loc[:, ~self.test_data_processed.columns.duplicated()]
+        self.test_data_processed = self.test_data_processed.reindex(columns=self.X_train.columns, fill_value=0)
 
-            # 1. 找出 test_data 中全为 NaN 的列
-            na_columns = self.test_features[i].columns[self.test_features[i].isna().all()]
-            # 2. 删除 train_data 和 test_data 中这些列
-            self.train_features[i] = self.train_features[i].drop(columns=na_columns, errors='ignore')
-            self.test_features[i] = self.test_features[i].drop(columns=na_columns, errors='ignore')
+        print(self.X_train.shape)
+        # 特征选择
+        self.X_train, self.test_data_processed = self.select_important_features()
 
+        print(self.X_train.shape)
+        # pca和标准化
+        self.X_train = self.standardize_and_reduce(self.X_train, fit=True)
+        self.test_data_processed = self.standardize_and_reduce(self.test_data_processed, fit=False)
 
-        # 训练数据处理逻辑
-        # 处理标签
-        self.process_label()
+        # 训练和预测
+        self.train_test()
 
-        self.train_features[1] = self.train_features[1].iloc[:,2:]
-        self.train_features[2] = self.train_features[2].iloc[:, 2:]
-        self.train_features[3] = self.train_features[3].iloc[:, 1:-2].join(self.train_features[3].iloc[:, -1])
+    def data_process(self, X_train):
+        # 删除处理
+        empty = ['D1 blood routine upon admission', 'D7 blood routine', 'Liver enzyme D1', 'Coagulation index D1',
+                 'Inflammatory indicator D1', 'Blood gas analysis', 'Virus nucleic acid test CT value',
+                 'Pulmonary CT condition']
+        X_train = X_train.drop(columns=empty)
 
+        # 标签处理或独热的列
+        str_columns = ['Age ranges[years]', 'Specimen collection location', 'Specimen collection location',
+                       'Pathogenic culture results',
+                       'Basic diseases (1 hypertension, 2 diabetes, 3 cardiovascular diseases, 4 cerebrovascular diseases, 5 COPD, 6 immunodeficiency (such as AIDS, hormone, immunosuppressant use history), 7 malignant tumor, 8 other 9 chronic kidney disease']
 
-        self.test_features[1] = self.test_features[1].iloc[:, 1:]
-        self.test_features[2] = self.test_features[2].iloc[:, 1:]
-        self.test_features[3] = self.test_features[3].iloc[:, 1:]
+        # 大部分为int的列
+        all_columns = X_train.columns.tolist()
+        int_columns = [col for col in all_columns if col not in str_columns]
 
-        # 处理缺失值、异常值和独热编码
-        for i in range(1, 4):
-            self.train_features[i] = self.handle_missing_and_encode(self.train_features[i], fit=True)
-            self.test_features[i] = self.handle_missing_and_encode(self.test_features[i], fit=False)
-            # 新增：处理异常值
-            self.train_features[i] = self.handle_outliers(self.train_features[i])
-            self.test_features[i] = self.handle_outliers(self.test_features[i])
-            # 标准化和PCA降维
-            self.train_features[i] = self.standardize_and_reduce(self.train_features[i], fit=True)
-            # self.test_features[i] = self.standardize_and_reduce(self.test_features[i], fit=False)
+        # 将str类型转化为空值
+        for col in int_columns:
+            X_train[col] = pd.to_numeric(X_train[col], errors='coerce')
 
-        for i in range(1, 4):
-            # print(i)
-            self.test_features[i] = self.handle_missing_and_encode(self.test_features[i])
+        # 处理空值
+        numeric_imputer = SimpleImputer(strategy='median')
+        X_train[int_columns] = numeric_imputer.fit_transform(X_train[int_columns])
 
-            # 独热编码的去重和对齐
-            self.train_features[i] = self.train_features[i].loc[:, ~self.train_features[i].columns.duplicated()]
-            self.test_features[i] = self.test_features[i].loc[:, ~self.test_features[i].columns.duplicated()]
+        # 转化为str
+        for col in str_columns:
+            X_train[col] = X_train[col].astype(str)
 
-            self.test_features[i] = self.test_features[i].reindex(columns=self.train_features[i].columns, fill_value=0)
-    def handle_outliers(self, data, threshold=1.5):
-        """
-        使用IQR（四分位距）方法来处理数据中的异常值
-        :param data: DataFrame, 需要处理的特征数据
-        :param threshold: float, 用于判断异常值的IQR倍数阈值，通常为1.5
-        :return: DataFrame, 处理后的数据
-        """
-        # 只处理数值型特征
-        numeric_features = data.select_dtypes(include=[np.number])
+        # 替换空值为‘0’
+        X_train = X_train[str_columns].replace({'[null]': '0', '/': '0', '-': '0'})
 
-        for column in numeric_features.columns:
-            Q1 = data[column].quantile(0.25)
-            Q3 = data[column].quantile(0.75)
-            IQR = Q3 - Q1
+        # 处理分类变量和缺失值
+        X_train = pd.get_dummies(X_train, columns=str_columns, dummy_na=True, dtype=int, drop_first=True).fillna(0)
 
-            lower_bound = Q1 - threshold * IQR
-            upper_bound = Q3 + threshold * IQR
+        return X_train
 
-            # 将异常值截断为边界值
-            data[column] = np.where(data[column] < lower_bound, lower_bound, data[column])
-            data[column] = np.where(data[column] > upper_bound, upper_bound, data[column])
+    def select_important_features(self):
+        # 使用随机森林进行特征选择
+        rf = RandomForestClassifier(n_estimators=100, random_state=42)
+        rf.fit(self.X_train, self.y_train)
 
-        return data
+        # 使用SelectFromModel选择最重要的特征
+        selector = SelectFromModel(rf, threshold='mean', prefit=True)
+        X_train_selected = selector.transform(self.X_train)
+        test_data_selected = selector.transform(self.test_data_processed)
+
+        # 打印选定的特征
+        selected_features = self.X_train.columns[selector.get_support()]
+        print(f"Selected features: {selected_features}")
+
+        return pd.DataFrame(X_train_selected), pd.DataFrame(test_data_selected)
+
+    def tuned_para(self):
+        # 定义 SVM 的参数搜索范围
+        param_grid = {
+            'C': [0.1, 1, 10, 100, 1000],  # 惩罚系数
+            'gamma': ['scale', 'auto', 0.001, 0.01, 0.1, 1],  # 核函数系数
+            'kernel': ['rbf', 'linear', 'poly', 'sigmoid'],  # 核函数类型
+            'degree': [3, 4, 5]  # 仅对多项式核有效
+        }
+
+        svm = SVC(probability=True, random_state=42)
+
+        # 使用 GridSearchCV 进行超参数调优
+        grid_search = GridSearchCV(estimator=svm, param_grid=param_grid, cv=5, scoring='accuracy', n_jobs=1, verbose=2)
+        grid_search.fit(self.X_train, self.y_train)
+
+        print(f"Best parameters found: {grid_search.best_params_}")
+        self._model = grid_search.best_estimator_
+
+    def default_para(self):
+        self._model = SVC(probability=True, random_state=42, C=1, degree= 3, gamma= 0.01, kernel= 'rbf')
     def standardize_and_reduce(self, data, fit=True):
         if fit:
             # 拟合标准化器和PCA，并转换数据
@@ -138,202 +137,36 @@ class Model:
             data = self.pca.transform(data)
         return pd.DataFrame(data)
 
-    def handle_missing_and_encode(self, data , fit=False):
-        # 处理缺失值
-        numeric_features = data.dtypes[data.dtypes != 'object'].index
-        categorical_features = data.select_dtypes(include=['object']).columns
+    def train_test(self):
+        # 将训练数据分割为训练集和验证集
+        X_train_split, X_valid, y_train_split, y_valid = train_test_split(self.X_train, self.y_train, test_size=0.2,
+                                                                          random_state=42)
 
-        numeric_imputer = SimpleImputer(strategy='median')
-        categorical_imputer = SimpleImputer(strategy='most_frequent')
-
-        # 检查是否有数值特征
-        if not numeric_features.empty:
-            data[numeric_features] = numeric_imputer.fit_transform(data[numeric_features])
-
-        # 检查是否有分类特征
-        if not categorical_features.empty:
-            # 将分类特征转换为字符串类型，避免类型冲突
-            data[categorical_features] = data[categorical_features].astype(str)
-            data[categorical_features] = categorical_imputer.fit_transform(data[categorical_features])
-
-        # 独热编码处理离散值
-        data = pd.get_dummies(data, dummy_na=True, dtype=int)
-
-        # 检查并移除重复列
-        data = data.loc[:, ~data.columns.duplicated()]
-
-        if fit:
-            self.encoder_columns = data.columns  # 保存训练集中编码后的列名
-        else:
-            # 确保测试集的特征与训练集对齐
-            data = data.reindex(columns=self.encoder_columns, fill_value=0)
-
-        return data
-
-    def ensemble_model(self):
-        # 使用回归模型替代分类模型
-        self.svr = SVR(kernel='rbf', C=1, gamma='scale')
-        self.rf = RandomForestClassifier(n_estimators=100, max_depth=10, min_samples_split=5, random_state=42)
-        self.gb = GradientBoostingRegressor(n_estimators=100, learning_rate=0.05, max_depth=5, random_state=42)
-        self.et = ExtraTreesRegressor(n_estimators=100, random_state=42)
-        self.svc1 = SVC(kernel='rbf', C=1, gamma='scale', probability=True, random_state=42)  # 使用RBF核函数
-        self.svc2 = SVC(kernel='linear', C=0.1, probability=True, random_state=42)  # 使用线性核函数
-        self.svc3 = SVC(kernel='poly', degree=3, C=0.5, gamma='scale', probability=True, random_state=42)  # 使用多项式核函数
-    def default_para(self):
-        self.ensemble_model()
-        # # 修改为StackingRegressor或其他适合回归的集成方法
-        # self._model = StackingRegressor(
-        #     estimators=[
-        #         ('rf', self.rf),
-        #         ('gb', self.gb),
-        #         ('et', self.et)
-        #     ],
-        #     final_estimator=GradientBoostingRegressor(n_estimators=50, learning_rate=0.1, max_depth=3, random_state=42),
-        #     cv=10,
-        #     n_jobs=-1,
-        #     passthrough=False
-        # )
-        self._model = self.svc2
-
-    def tuned_para(self):
-        param_grid = {
-            'C': [0.1, 1, 10, 100],
-            'gamma': [0.001, 0.01, 0.1, 1],
-            'kernel': ['rbf', 'linear']
-        }
-        grid_search = GridSearchCV(estimator=SVR(), param_grid=param_grid, cv=10, n_jobs=-1, verbose=1)
-        grid_search.fit(self.train_features, self.labels)  # 确保使用正确的特征和标签
-        print("Best parameters found: ", grid_search.best_params_)
-        self._model = SVR(**grid_search.best_params_)
-
-    def svc_predict(self, data_order, data):
+        self._model = SVC(probability=True, random_state=42, C=1, degree= 3, gamma= 0.01, kernel= 'rbf')
+        self._model.fit(X_train_split, y_train_split)
         self.calibrated_svm = CalibratedClassifierCV(estimator=self._model, method='sigmoid', cv='prefit')
-        self.calibrated_svm.fit(self.train_features[data_order], self.labels[data_order])
+        self.calibrated_svm.fit(X_train_split, y_train_split)
 
-        if data_order == 1 or 2:
-            result = self.calibrated_svm.predict_proba(data)[:, 1]
-        if data_order == 3:
-            result = self.calibrated_svm.predict_proba(data)[:, 0]
-        return result
-    def train_and_predict(self):
-        all_results = pd.DataFrame()
+        # 验证模型
+        y_valid_pred = self.calibrated_svm.predict_proba(X_valid)[:, 1]
+        validation_error = mean_absolute_error(y_valid, y_valid_pred)
+        validation_error_rmse = np.sqrt(mean_squared_error(y_valid, y_valid_pred))
 
-        for i in range(1, 4):
-            X_train = self.train_features[i]
-            y_train = self.labels[i]
-            X_test = self.test_features[i]
+        print("Validation Error (MAE):", validation_error)
+        print("Validation Error (RMSE):", validation_error_rmse)
 
-            kf = KFold(n_splits=20, shuffle=True, random_state=42)
-            train_maes, valid_maes = [], []
-            train_rmses, valid_rmses = [], []
-            train_r2s, valid_r2s = [], []
-            train_custom_scores, valid_custom_scores = [], []
+        # 在测试集上进行预测
+        y_test_pred = self.calibrated_svm.predict_proba(self.test_data_processed)[:, 1]
 
-            for train_index, valid_index in kf.split(X_train):
-                X_train_fold = X_train.iloc[train_index]
-                X_valid_fold = X_train.iloc[valid_index]
-                y_train_fold = y_train.iloc[train_index]
-                y_valid_fold = y_train.iloc[valid_index]
+        # 准备预测结果
+        predictions = pd.DataFrame({
+            'id': self.id_number,
+            'label': y_test_pred
+        })
 
-                # 训练模型
-                self._model.fit(X_train_fold, y_train_fold)
-
-                # 在训练集和验证集上进行预测
-                y_train_pred_fold = self.svc_predict(i, data = X_train_fold)
-                y_valid_pred_fold = self.svc_predict(i, data = X_valid_fold)
-
-                # 计算训练集和验证集的各项指标
-                train_mae = mean_absolute_error(y_train_fold, y_train_pred_fold)
-                valid_mae = mean_absolute_error(y_valid_fold, y_valid_pred_fold)
-
-                train_rmse = np.sqrt(mean_squared_error(y_train_fold, y_train_pred_fold))
-                valid_rmse = np.sqrt(mean_squared_error(y_valid_fold, y_valid_pred_fold))
-
-                train_r2 = r2_score(y_train_fold, y_train_pred_fold)
-                valid_r2 = r2_score(y_valid_fold, y_valid_pred_fold)
-
-                train_custom_score = self.custom_scorer(y_train_fold, y_train_pred_fold)
-                valid_custom_score = self.custom_scorer(y_valid_fold, y_valid_pred_fold)
-
-                # 记录每个 fold 的结果
-                train_maes.append(train_mae)
-                valid_maes.append(valid_mae)
-                train_rmses.append(train_rmse)
-                valid_rmses.append(valid_rmse)
-                train_r2s.append(train_r2)
-                valid_r2s.append(valid_r2)
-                train_custom_scores.append(train_custom_score)
-                valid_custom_scores.append(valid_custom_score)
-
-            # 打印和绘制训练集和验证集的结果对比
-            self._plot_comparison(train_maes, valid_maes, train_rmses, valid_rmses, train_r2s, valid_r2s, train_custom_scores, valid_custom_scores)
-
-            # 输出每个指标的均值和方差
-            print(f"Dataset {i} - Valid MAE: Mean={np.mean(valid_maes):.4f}, Std={np.std(valid_maes):.4f}")
-            print(f"Dataset {i} - Valid RMSE: Mean={np.mean(valid_rmses):.4f}, Std={np.std(valid_rmses):.4f}")
-            print(f"Dataset {i} - Valid R²: Mean={np.mean(valid_r2s):.4f}, Std={np.std(valid_r2s):.4f}")
-            print(f"Dataset {i} - Valid Custom Score: Mean={np.mean(valid_custom_scores):.4f}, Std={np.std(valid_custom_scores):.4f}")
-            print('\n')
-            # 对测试集进行预测
-            predictions = self.svc_predict(i, data = X_test)
-            predictions = np.clip(predictions, 0, 1)
-
-            task_results = pd.DataFrame({
-                'id': self.test_data[i].iloc[:, 0],
-                'label': predictions
-            })
-
-            all_results = pd.concat([all_results, task_results], ignore_index=True)
-
-        output_csv = 'result.csv'
-        all_results.to_csv(output_csv, index=False)
-
-    def custom_scorer(self, y_true, y_pred):
-        mae = mean_absolute_error(y_true, y_pred)
-        rmse = np.sqrt(mean_squared_error(y_true, y_pred))
-        return 0.5 * mae + 0.5 * rmse
-
-    def _plot_comparison(self, train_maes, valid_maes, train_rmses, valid_rmses, train_r2s, valid_r2s, train_custom_scores, valid_custom_scores):
-        plt.figure(figsize=(18, 12))
-
-        # MAE 对比
-        plt.subplot(2, 2, 1)
-        plt.plot(train_maes, label='Train MAE', marker='o')
-        plt.plot(valid_maes, label='Validation MAE', marker='o')
-        plt.xlabel('Fold Number')
-        plt.ylabel('MAE')
-        plt.title('Train vs Validation MAE')
-        plt.legend()
-
-        # RMSE 对比
-        plt.subplot(2, 2, 2)
-        plt.plot(train_rmses, label='Train RMSE', marker='o', color='orange')
-        plt.plot(valid_rmses, label='Validation RMSE', marker='o', color='red')
-        plt.xlabel('Fold Number')
-        plt.ylabel('RMSE')
-        plt.title('Train vs Validation RMSE')
-        plt.legend()
-
-        # R² 对比
-        plt.subplot(2, 2, 3)
-        plt.plot(train_r2s, label='Train R² Score', marker='o', color='green')
-        plt.plot(valid_r2s, label='Validation R² Score', marker='o', color='blue')
-        plt.xlabel('Fold Number')
-        plt.ylabel('R² Score')
-        plt.title('Train vs Validation R² Score')
-        plt.legend()
-
-        # Custom Score 对比
-        plt.subplot(2, 2, 4)
-        plt.plot(train_custom_scores, label='Train Custom Score', marker='o', color='purple')
-        plt.plot(valid_custom_scores, label='Validation Custom Score', marker='o', color='pink')
-        plt.xlabel('Fold Number')
-        plt.ylabel('Custom Score')
-        plt.title('Train vs Validation Custom Score')
-        plt.legend()
-
-        plt.tight_layout()
-        plt.show()
+        # 将预测结果保存为CSV文件
+        output_file_path = './result3.csv.csv'
+        predictions.to_csv(output_file_path, index=False)
 
 
-model = Model()
+Model = model()
