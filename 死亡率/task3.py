@@ -66,7 +66,6 @@ class Model:
         self.labels = self.train_features['Death (1 Yes 2 No)'].apply(lambda x: 1 if x == 1 else 0)  # 转换标签为0和1
         self.train_features = self.train_features.drop(columns=['Number', 'Death (1 Yes 2 No)'])  # 去掉患者编码和标签
         self.test_features = self.test_features.drop(columns=['Patient Code'])  # 去掉测试集中的患者编码
-        print(f"self.labels:{self.labels}")
 
         # 统一测试集中的特征名称
         self.test_features = self.test_features.rename(columns={
