@@ -18,7 +18,9 @@ from xgboost import XGBClassifier
 from sklearn.ensemble import StackingClassifier
 from sklearn.decomposition import PCA
 from imblearn.over_sampling import SMOTE
-
+from sklearn.model_selection import GridSearchCV,RandomizedSearchCV
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.feature_selection import SelectFromModel
 class Model:
     def __init__(self):
         self.train_data = pd.read_excel('train2.xlsx')
@@ -63,66 +65,107 @@ class Model:
         self.train_features.rename(columns=lambda x: x.strip(), inplace=True)
         self.test_features.rename(columns=lambda x: x.strip(), inplace=True)
 
-        # 对 Age 列进行编码
-        self.train_features['Age'] = self.train_features['Age'].map({'60-70': 1, '71-80': 2, '>80': 3})
-        self.test_features['Age'] = self.test_features['Age'].map({'60-70': 1, '71-80': 2, '>80': 3})
-
         # 数据预处理：提取特征和标签
         self.labels = self.train_features['outcome'].apply(lambda x: 1 if x == 2 else 0)  # 转换标签为0和1
         self.train_features = self.train_features.drop(columns=['Sl 2', 'outcome'])  # 去掉患者编码和标签
         self.test_features = self.test_features.drop(columns=['Patient Code'])  # 去掉患者编码
 
-        # 定义填充缺失值的方式
-        imputer = SimpleImputer(strategy='most_frequent')
+        # 获取所有 object 类型的列
+        train_object_columns = self.train_features.select_dtypes(include=['object']).columns
+        test_object_columns = self.test_features.select_dtypes(include=['object']).columns
 
-        # 填充缺失值
-        self.train_features_imputed = pd.DataFrame(imputer.fit_transform(self.train_features),
-                                                   columns=self.train_features.columns)
-        self.test_features_imputed = pd.DataFrame(imputer.transform(self.test_features),
-                                                  columns=self.test_features.columns)
+        # 转换 object 类型的列为数值型，记录无法转换的列
+        train_conversion_issues = []
+        test_conversion_issues = []
 
-        # 对 Age 列进行编码
-        label_encoder = LabelEncoder()
-        self.train_features_imputed['Age'] = label_encoder.fit_transform(self.train_features_imputed['Age'])
-        self.test_features_imputed['Age'] = label_encoder.transform(self.test_features_imputed['Age'])
+        for col in train_object_columns:
+            try:
+                self.train_features[col] = pd.to_numeric(self.train_features[col], errors='raise')
+            except ValueError:
+                train_conversion_issues.append(col)
 
-        # 特征选择
-        model = RandomForestClassifier(n_estimators=100, random_state=42)
-        model.fit(self.train_features_imputed, self.labels)
+        for col in test_object_columns:
+            try:
+                self.test_features[col] = pd.to_numeric(self.test_features[col], errors='raise')
+            except ValueError:
+                test_conversion_issues.append(col)
 
-        # 获取特征重要性并排序
-        importances = model.feature_importances_
-        indices = np.argsort(importances)[::-1]
+        # 对无法转换的列进行处理，使用 LabelEncoder 对分类特征编码
+        label_encoders = {}
+        for col in train_conversion_issues:
+            if self.train_features[col].dtype == 'object':
+                le = LabelEncoder()
+                self.train_features[col] = le.fit_transform(self.train_features[col].astype(str))
+                self.test_features[col] = self.test_features[col].apply(
+                    lambda x: le.transform([x])[0] if x in le.classes_ else -1)
+                label_encoders[col] = le
 
-        # 选择前20个重要特征
-        top_features = [self.train_features_imputed.columns[i] for i in indices[:20]]
-        self.train_features = self.train_features_imputed[top_features]
-        self.test_features = self.test_features_imputed[top_features]
+        # 检查是否有全为 NaN 的列
+        nan_columns_train = self.train_features.columns[self.train_features.isna().all()].tolist()
+        nan_columns_test = self.test_features.columns[self.test_features.isna().all()].tolist()
 
-        # # 进行PCA
-        # pca = PCA(n_components=30)  # 选择30个主成分
-        # self.train_features= pd.DataFrame(pca.fit_transform(self.train_features_imputed))
-        # self.test_features= pd.DataFrame(pca.transform(self.test_features_imputed))
+        # 如果有完全为 NaN 的列，手动处理这些列（如删除或填充）
+        if nan_columns_train or nan_columns_test:
+            print("Columns with all NaN in train:", nan_columns_train)
+            print("Columns with all NaN in test:", nan_columns_test)
+            self.train_features.drop(columns=nan_columns_train, inplace=True)
+            self.test_features.drop(columns=nan_columns_test, inplace=True)
 
-        return self.train_features , self.test_features
+        # 处理缺失值
+        common_columns = self.train_features.columns.intersection(self.test_features.columns)
+        self.train_features = self.train_features[common_columns]
+        self.test_features = self.test_features[common_columns]
+
+        imputer = SimpleImputer(strategy='mean')
+        self.train_features = pd.DataFrame(imputer.fit_transform(self.train_features),
+                                           columns=common_columns)
+        self.test_features = pd.DataFrame(imputer.transform(self.test_features),
+                                          columns=common_columns)
+
+
+        return self.train_features, self.test_features
+
 
     def default_para(self):
-        # 基础模型
-        model2 = LogisticRegression(random_state=42, max_iter=1000)
-        model3 = SVC(kernel='rbf', probability=True, random_state=42)
-        model4 = RandomForestClassifier(random_state=42, n_estimators=100, max_depth=5)
-
-        # 堆叠模型
+        # 使用随机森林进行特征选择
+        feature_selector = SelectFromModel(RandomForestClassifier(n_estimators=100, random_state=42))
+        # 使用选定的PCA主成分数目
         pipeline = Pipeline([
             ('imputer', SimpleImputer(strategy='mean')),  # 使用均值填补缺失值
             ('scaler', StandardScaler()),  # 数据标准化
-            ('classifier', model3)
+            ('feature_selector', feature_selector),  # 加入特征选择步骤
+            # ('pca', PCA(n_components=self.n_components)),  # 使用推荐的主成分数目
+            ('classifier', LogisticRegression(random_state=42, penalty='l2', solver='liblinear', C=1))
         ])
         self._model = pipeline
 
     def tuned_para(self):
-        self.default_para()
-        pass
+        # 定义 SVM 的参数搜索范围
+        param_distributions = {
+            'C': [0.1, 1, 10, 100, 1000],  # 惩罚系数
+            'gamma': ['scale', 'auto', 0.001, 0.01, 0.1, 1],  # 核函数系数
+            'kernel': ['rbf', 'linear', 'poly', 'sigmoid'],  # 核函数类型
+            'degree': [3, 4, 5]  # 仅对多项式核有效
+        }
+
+        svm = SVC(probability=True, random_state=42)
+
+        # 使用 RandomizedSearchCV 进行超参数调优
+        random_search = RandomizedSearchCV(
+            estimator=svm,
+            param_distributions=param_distributions,
+            n_iter=50,  # 指定搜索的迭代次数
+            cv=5,
+            scoring='accuracy',
+            n_jobs=-1,
+            verbose=2,
+            random_state=42
+        )
+        random_search.fit(self.train_features, self.labels)
+
+        print(f"Best parameters found: {random_search.best_params_}")
+        self._model = random_search.best_estimator_
+
 
     def train_test(self, data, mode):
         # 应用SMOTE
@@ -138,7 +181,13 @@ class Model:
                 X_train_fold, X_valid_fold = data.iloc[train_index], data.iloc[valid_index]
                 y_train_fold, y_valid_fold = self.labels[train_index], self.labels[valid_index]
 
-                self._model.fit(X_train_fold, y_train_fold)
+                # self._model.fit(X_train_fold, y_train_fold)
+
+                # 应用 SMOTE 仅在训练数据上
+                smote = SMOTE(random_state=42)
+                X_train_fold_resampled, y_train_fold_resampled = smote.fit_resample(X_train_fold, y_train_fold)
+
+                self._model.fit(X_train_fold_resampled, y_train_fold_resampled)
 
                 # 预测训练集和验证集
                 y_train_pred_fold = self._model.predict(X_train_fold)
@@ -167,7 +216,11 @@ class Model:
             self._print_results(valid_maes, valid_rmses, valid_custom_scores)
 
         if mode == 'test':
-            predictions_proba = self._model.predict_proba(data)[:, 1]
+            self._model.fit(self.train_features, self.labels)
+            calibrated_model = CalibratedClassifierCV(self._model, method='sigmoid', cv='prefit')
+            calibrated_model.fit(self.train_features, self.labels)
+            predictions_proba = calibrated_model.predict_proba(data)[:, 1]
+
             results = pd.DataFrame({'id': self.test_data.iloc[:, 0], 'label': predictions_proba})
             output_csv = 'result2.csv'
             results.to_csv(output_csv, index=False)
