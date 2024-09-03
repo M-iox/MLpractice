@@ -1,5 +1,5 @@
 from sklearn.preprocessing import LabelEncoder
-from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.ensemble import GradientBoostingClassifier, GradientBoostingRegressor, StackingClassifier
 from sklearn.svm import SVC
 import pandas as pd
 import numpy as np
@@ -14,17 +14,16 @@ from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
+from sklearn.tree import DecisionTreeClassifier
 from xgboost import XGBClassifier
 from imblearn.over_sampling import SMOTE
-from sklearn.decomposition import PCA
-from sklearn.model_selection import LeaveOneOut
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.feature_selection import SelectFromModel
 
 class Model:
     def __init__(self):
-        self.train_data = pd.read_excel('train3.xlsx')
-        self.test_data = pd.read_csv('test3.csv', encoding='latin1')
+        self.train_data = pd.read_csv('train1.csv')
+        self.test_data = pd.read_csv('test1.csv')
         self.train_features,self.test_features = self.process_data()
 
         self.default_para()
@@ -58,23 +57,19 @@ class Model:
         plt.show()
 
     def process_data(self):
-        # 复制数据
         self.train_features = self.train_data.copy()
         self.test_features = self.test_data.copy()
 
-        # 数据预处理：提取特征和标签
-        self.labels = self.train_features['Death (1 Yes 2 No)'].apply(lambda x: 1 if x == 1 else 0)  # 转换标签为0和1
-        self.train_features = self.train_features.drop(columns=['Number', 'Death (1 Yes 2 No)'])  # 去掉患者编码和标签
-        self.test_features = self.test_features.drop(columns=['Patient Code'])  # 去掉测试集中的患者编码
-        print(f"self.labels:{self.labels}")
+        # 去掉列名的空格
+        self.train_features.rename(columns=lambda x: x.strip(), inplace=True)
+        self.test_features.rename(columns=lambda x: x.strip(), inplace=True)
 
-        # 统一测试集中的特征名称
-        self.test_features = self.test_features.rename(columns={
-            'Patient Code': 'Number',
-            'Disease onset D1 highest body temperature[¡æ]': 'Disease onset D1 highest body temperature[℃]',
-            'creatinine[¦Ìmol/L]': 'creatinine[μmol/L]',
-            'total bilirubin[¦Ìmol/L]': 'total bilirubin[μmol/L]'
-        })
+        # 数据预处理：提取特征和标签
+        self.labels = self.train_features['Deceased'].apply(lambda x: 1 if x != 'No' else 0)  # 转换标签为0和1
+        self.train_features = self.train_features.drop(columns=['Patient Code', 'Deceased'])  # 去掉患者编码和标签
+
+        # 测试集去掉编码
+        self.test_features =self.test_features.drop(columns=['Patient Code'])  # 去掉患者编码
 
         # 获取所有 object 类型的列
         train_object_columns = self.train_features.select_dtypes(include=['object']).columns
@@ -83,18 +78,6 @@ class Model:
         # 转换 object 类型的列为数值型，记录无法转换的列
         train_conversion_issues = []
         test_conversion_issues = []
-
-        for col in train_object_columns:
-            try:
-                self.train_features[col] = pd.to_numeric(self.train_features[col], errors='raise')
-            except ValueError:
-                train_conversion_issues.append(col)
-
-        for col in test_object_columns:
-            try:
-                self.test_features[col] = pd.to_numeric(self.test_features[col], errors='raise')
-            except ValueError:
-                test_conversion_issues.append(col)
 
         # 对无法转换的列进行处理，使用 LabelEncoder 对分类特征编码
         label_encoders = {}
@@ -105,15 +88,6 @@ class Model:
                 self.test_features[col] = self.test_features[col].apply(
                     lambda x: le.transform([x])[0] if x in le.classes_ else -1)
                 label_encoders[col] = le
-
-        # 再次尝试将这些列转换为数值型
-        for col in train_conversion_issues:
-            self.train_features[col] = pd.to_numeric(self.train_features[col], errors='coerce')
-            self.test_features[col] = pd.to_numeric(self.test_features[col], errors='coerce')
-
-        # 针对测试集中剩余的 object 类型列 `NRL[%]` 进行处理
-        if 'NRL[%]' in self.test_features.columns:
-            self.test_features['NRL[%]'] = pd.to_numeric(self.test_features['NRL[%]'], errors='coerce')
 
         # 检查是否有全为 NaN 的列
         nan_columns_train = self.train_features.columns[self.train_features.isna().all()].tolist()
@@ -137,8 +111,7 @@ class Model:
         self.test_features = pd.DataFrame(imputer.transform(self.test_features),
                                           columns=common_columns)
 
-
-        return self.train_features, self.test_features
+        return self.train_features , self.test_features
 
     def default_para(self):
         # 使用随机森林进行特征选择
@@ -153,35 +126,6 @@ class Model:
         ])
         self._model = pipeline
 
-    def determine_pca_components(self):
-        # 标准化数据
-        scaler = StandardScaler()
-        scaled_features = scaler.fit_transform(self.train_features)
-
-        # 使用PCA进行降维
-        pca = PCA().fit(scaled_features)
-
-        # 累积解释方差比例
-        explained_variance_ratio = np.cumsum(pca.explained_variance_ratio_)
-
-        # 绘制累积解释方差曲线
-        plt.figure(figsize=(10, 6))
-        plt.plot(range(1, len(explained_variance_ratio) + 1), explained_variance_ratio, marker='o', linestyle='--')
-        plt.title('Cumulative Explained Variance by Number of Principal Components')
-        plt.xlabel('Number of Principal Components')
-        plt.ylabel('Cumulative Explained Variance')
-        plt.grid()
-        plt.show()
-
-        # 打印解释方差达到90%和95%时对应的主成分数目
-        n_components_90 = np.argmax(explained_variance_ratio >= 0.90) + 1
-        n_components_95 = np.argmax(explained_variance_ratio >= 0.95) + 1
-
-        print(f'Number of components for 90% explained variance: {n_components_90}')
-        print(f'Number of components for 95% explained variance: {n_components_95}')
-
-        # 返回推荐的主成分数目
-        self.n_components = n_components_95
     def tuned_para(self):
         self.default_para()
         pass
@@ -189,7 +133,6 @@ class Model:
     def train_test(self, data, mode):
         if mode == 'train':
             kf = KFold(n_splits=10, shuffle=True, random_state=42)
-            loo = LeaveOneOut()
             train_maes, valid_maes = [], []
             train_rmses, valid_rmses = [], []
             train_custom_scores, valid_custom_scores = [], []
@@ -198,12 +141,7 @@ class Model:
                 X_train_fold, X_valid_fold = data.iloc[train_index], data.iloc[valid_index]
                 y_train_fold, y_valid_fold = self.labels[train_index], self.labels[valid_index]
 
-                # self._model.fit(X_train_fold, y_train_fold)
-                # 应用 SMOTE 仅在训练数据上
-                smote = SMOTE(random_state=42)
-                X_train_fold_resampled, y_train_fold_resampled = smote.fit_resample(X_train_fold, y_train_fold)
-
-                self._model.fit(X_train_fold_resampled, y_train_fold_resampled)
+                self._model.fit(X_train_fold, y_train_fold)
 
                 # 预测训练集和验证集
                 y_train_pred_fold = self._model.predict(X_train_fold)
@@ -237,9 +175,8 @@ class Model:
             calibrated_model.fit(self.train_features, self.labels)
             predictions_proba = calibrated_model.predict_proba(data)[:, 1]
 
-            predictions = self._model.predict(data)
             results = pd.DataFrame({'id': self.test_data.iloc[:, 0], 'label': predictions_proba})
-            output_csv = 'result3.csv'
+            output_csv = 'result1.csv'
             results.to_csv(output_csv, index=False)
 
 model = Model()
