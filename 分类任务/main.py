@@ -8,6 +8,8 @@ from collections import Counter
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import VotingClassifier, RandomForestClassifier, GradientBoostingClassifier,StackingClassifier
 from sklearn.pipeline import Pipeline
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+
 class Model:
     def __init__(self):
         self.train_data = pd.read_csv('train.csv')
@@ -105,24 +107,31 @@ class Model:
             train_f1_scores, valid_f1_scores = [], []
             train_custom_scores, valid_custom_scores = [], []
 
+            # 保存所有验证集的真实标签和预测标签
+            all_y_valid_true = []
+            all_y_valid_pred = []
+
             for train_index, valid_index in kf.split(data):
                 X_train_fold, X_valid_fold = data.iloc[train_index], data.iloc[valid_index]
                 y_train_fold, y_valid_fold = self.labels[train_index], self.labels[valid_index]
 
                 self._model.fit(X_train_fold, y_train_fold)
 
-                # 预测训练集和验证集
-                y_train_pred_fold = self._model.predict(X_train_fold)
+                # 预测验证集
                 y_valid_pred_fold = self._model.predict(X_valid_fold)
 
+                # 保存验证集真实值和预测值
+                all_y_valid_true.extend(y_valid_fold)
+                all_y_valid_pred.extend(y_valid_pred_fold)
+
                 # 计算训练集和验证集的准确率和 F1 分数
-                train_acc = accuracy_score(y_train_fold, y_train_pred_fold)
+                train_acc = accuracy_score(y_train_fold, self._model.predict(X_train_fold))
                 valid_acc = accuracy_score(y_valid_fold, y_valid_pred_fold)
-                train_f1 = f1_score(y_train_fold, y_train_pred_fold, average='weighted')
+                train_f1 = f1_score(y_train_fold, self._model.predict(X_train_fold), average='weighted')
                 valid_f1 = f1_score(y_valid_fold, y_valid_pred_fold, average='weighted')
 
                 # 计算自定义评分
-                train_custom = self.custom_scorer(y_train_fold, y_train_pred_fold)
+                train_custom = self.custom_scorer(y_train_fold, self._model.predict(X_train_fold))
                 valid_custom = self.custom_scorer(y_valid_fold, y_valid_pred_fold)
 
                 train_accuracies.append(train_acc)
@@ -133,8 +142,16 @@ class Model:
                 valid_custom_scores.append(valid_custom)
 
             # 打印并绘制训练集和验证集的结果
-            self._plot_comparison(train_accuracies, valid_accuracies, train_f1_scores, valid_f1_scores, train_custom_scores, valid_custom_scores)
+            self._plot_comparison(train_accuracies, valid_accuracies, train_f1_scores, valid_f1_scores,
+                                  train_custom_scores, valid_custom_scores)
             self._print_results(valid_accuracies, valid_f1_scores, valid_custom_scores)
+
+            # 计算并绘制所有折叠验证集的混淆矩阵
+            cm = confusion_matrix(all_y_valid_true, all_y_valid_pred)
+            disp = ConfusionMatrixDisplay(confusion_matrix=cm)
+            disp.plot(cmap='Blues')
+            plt.title('Final Confusion Matrix (All Folds)')
+            plt.show()
 
         if mode == 'test':
             predictions = self._model.predict(data)
@@ -142,5 +159,6 @@ class Model:
             results = pd.DataFrame({'id': self.test_data.iloc[:, 0], 'Group': predictions})
             output_csv = 'result.csv'
             results.to_csv(output_csv, index=False)
+
 
 model = Model()

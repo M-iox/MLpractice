@@ -6,6 +6,7 @@ def run_task(script_name):
     try:
         subprocess.run(['python', script_name], check=True)
         print(f"{script_name} 运行成功")
+        print('\n')
     except subprocess.CalledProcessError as e:
         print(f"运行 {script_name} 时出错: {e}")
 
