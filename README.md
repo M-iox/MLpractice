@@ -2,4 +2,4 @@
 
 预测任务：运行main.py，得到result_all.csv
 
-github:
+github:https://github.com/M-iox/MLpractice.git
