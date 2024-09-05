@@ -72,12 +72,9 @@ class Model:
 
         # 将 Troponin 列中的非数值数据转换为数值类型，'Negative' 转换为 0
         self.train_features['Troponin'] = self.train_features['Troponin'].apply(
-            lambda x: 0 if x == 'Negative' else float(x) if isinstance(x, str) and x.replace('.', '',
-                                                                                             1).isdigit() else x)
+            lambda x: 0 if x == 'Negative' else float(x) if isinstance(x, str) and x.replace('.', '',1).isdigit() else x)
         self.test_features['Troponin'] = self.train_features['Troponin'].apply(
-            lambda x: 0 if x == 'Negative' else float(x) if isinstance(x, str) and x.replace('.', '',
-
-                                                                                             1).isdigit() else x)
+            lambda x: 0 if x == 'Negative' else float(x) if isinstance(x, str) and x.replace('.', '',1).isdigit() else x)
 
         # 数据预处理：提取特征和标签
         self.labels = self.train_features['Group'].apply(lambda x: 1 if x != 'Control' else 0)  # 转换标签为0和1

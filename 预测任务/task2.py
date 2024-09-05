@@ -46,7 +46,6 @@ class Model:
         plt.figure(figsize=(18, 12))
 
         # Custom Score 对比
-        plt.subplot(2, 2, 4)
         plt.plot(train_custom_scores, label='Train Custom Score', marker='o', color='purple')
         plt.plot(valid_custom_scores, label='Validation Custom Score', marker='o', color='pink')
         plt.xlabel('Fold Number')
@@ -131,7 +130,6 @@ class Model:
         feature_selector = SelectFromModel(RandomForestClassifier(n_estimators=100, random_state=42))
         # 使用选定的PCA主成分数目
         pipeline = Pipeline([
-            ('imputer', SimpleImputer(strategy='mean')),  # 使用均值填补缺失值
             ('scaler', StandardScaler()),  # 数据标准化
             ('feature_selector', feature_selector),  # 加入特征选择步骤
             # ('pca', PCA(n_components=self.n_components)),  # 使用推荐的主成分数目

@@ -45,7 +45,6 @@ class Model:
         plt.figure(figsize=(18, 12))
 
         # Custom Score 对比
-        plt.subplot(2, 2, 4)
         plt.plot(train_custom_scores, label='Train Custom Score', marker='o', color='purple')
         plt.plot(valid_custom_scores, label='Validation Custom Score', marker='o', color='pink')
         plt.xlabel('Fold Number')
